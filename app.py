@@ -180,7 +180,7 @@ if page=="Dashboard":
 # Crops Page (Add/Edit/Delete)
 # ------------------------------
 elif page=="Crops":
-    st.title("🌱 Crop Management")
+    st.rerun()
     st.markdown("Add, edit, or remove crop records.")
     st.markdown("---")
     with st.expander("➕ Add New Crop",expanded=False):
