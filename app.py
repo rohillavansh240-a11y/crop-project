@@ -1,13 +1,31 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
 # Page config
 st.set_page_config(page_title="Crop Dashboard", layout="wide")
 
-# Title / Hero Section
-st.title("🌾 Agricultural Overview")
-st.markdown("Track crop performance, market prices, and production volumes")
+# Custom CSS (Modern UI)
+st.markdown("""
+<style>
+.main {
+    background-color: #0e1117;
+}
+h1, h2, h3, h4 {
+    color: white;
+}
+.metric-box {
+    background: #1c1f26;
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Title
+st.title("🌾 Smart Crop Dashboard")
 
 # Load data
 data = pd.read_csv("crop_data.csv")
@@ -21,43 +39,32 @@ top_crop = data.groupby('Crop')['Production'].sum().idxmax()
 # ===== STAT CARDS =====
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("🌱 Total Crops", total_crops)
-col2.metric("💰 Avg Price", f"{avg_price:.2f}")
-col3.metric("⚖️ Total Production", f"{total_production:.0f}")
-col4.metric("📈 Top Crop", top_crop)
+col1.markdown(f"<div class='metric-box'><h3>Total Crops</h3><h2>{total_crops}</h2></div>", unsafe_allow_html=True)
+col2.markdown(f"<div class='metric-box'><h3>Avg Price</h3><h2>{avg_price:.2f}</h2></div>", unsafe_allow_html=True)
+col3.markdown(f"<div class='metric-box'><h3>Total Production</h3><h2>{total_production:.0f}</h2></div>", unsafe_allow_html=True)
+col4.markdown(f"<div class='metric-box'><h3>Top Crop</h3><h2>{top_crop}</h2></div>", unsafe_allow_html=True)
 
 # ===== SIDEBAR =====
-st.sidebar.header("Filter")
+st.sidebar.title("⚙️ Filter")
 crop = st.sidebar.selectbox("Select Crop", data['Crop'].unique())
 
 filtered = data[data['Crop'] == crop]
 
-# ===== CHART 1: Production =====
-st.subheader("📊 Production Volume")
+# ===== CHARTS =====
+st.markdown("## 📊 Analytics")
 
-fig1, ax1 = plt.subplots()
-ax1.bar(filtered['Year'], filtered['Production'])
-ax1.set_xlabel("Year")
-ax1.set_ylabel("Production")
+col5, col6 = st.columns(2)
 
-st.pyplot(fig1)
+# Production Chart
+fig1 = px.bar(filtered, x='Year', y='Production', title="Production Volume", color='Production')
+col5.plotly_chart(fig1, use_container_width=True)
 
-# ===== CHART 2: Price Trend =====
-st.subheader("💰 Price Trend")
+# Price Chart
+fig2 = px.line(filtered, x='Year', y='Price', title="Price Trend", markers=True)
+col6.plotly_chart(fig2, use_container_width=True)
 
-fig2, ax2 = plt.subplots()
-ax2.plot(filtered['Year'], filtered['Price'])
-ax2.set_xlabel("Year")
-ax2.set_ylabel("Price")
+# ===== FULL WIDTH CHART =====
+st.markdown("## 📦 Crop Distribution")
 
-st.pyplot(fig2)
-
-# ===== CHART 3: Category Distribution =====
-st.subheader("📦 Crop Distribution")
-
-dist = data['Crop'].value_counts()
-
-fig3, ax3 = plt.subplots()
-ax3.pie(dist, labels=dist.index, autopct='%1.1f%%')
-
-st.pyplot(fig3)
+fig3 = px.pie(data, names='Crop', title="Crop Distribution")
+st.plotly_chart(fig3, use_container_width=True)
