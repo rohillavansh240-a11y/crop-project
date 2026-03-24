@@ -2,15 +2,14 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 
-st.set_page_config(
-    page_title="AgriDash",
-    page_icon="🌾",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# ------------------------------
+# Config & Colors
+# ------------------------------
+st.set_page_config(page_title="AgriDash", page_icon="🌾", layout="wide", initial_sidebar_state="expanded")
 
 GREEN        = "#2d6a4f"
 LIGHT_GREEN  = "#95d5b2"
@@ -20,34 +19,53 @@ STEEL_BLUE   = "#457b9d"
 OLIVE        = "#606c38"
 COLORS       = [GREEN, GOLD, TERRACOTTA, STEEL_BLUE, OLIVE, LIGHT_GREEN, "#6d4c41", "#a8dadc"]
 
-# CSV fallback
-CSV_FILE = "crop_data.csv"
-
-# Database URL (optional)
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# -------------------
-# Data access functions
-# -------------------
-if DATABASE_URL:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-
-    def get_conn():
+# ------------------------------
+# Database Functions
+# ------------------------------
+def get_conn():
+    if not DATABASE_URL:
+        st.error("⚠️ DATABASE_URL environment variable not set.")
+        st.stop()
+    try:
         return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    except Exception as e:
+        st.error(f"⚠️ Database connection failed: {e}")
+        st.stop()
 
-    def load_crops():
+def load_crops():
+    try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM crops ORDER BY created_at DESC")
                 rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame()
         df = pd.DataFrame([dict(r) for r in rows])
-        if not df.empty:
-            for col in ["price_per_unit", "production_volume"]:
+        for col in ["price_per_unit", "production_volume"]:
+            if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
+    except Exception as e:
+        st.error(f"Error loading crops: {e}")
+        return pd.DataFrame()
 
-    def insert_crop(data):
+def load_stats(df):
+    if df.empty:
+        return {"total": 0, "avg_price": 0, "total_prod": 0, "top_price": "N/A", "top_prod": "N/A"}
+    
+    stats = {
+        "total": len(df),
+        "avg_price": df["price_per_unit"].mean() if "price_per_unit" in df else 0,
+        "total_prod": df["production_volume"].sum() if "production_volume" in df else 0,
+        "top_price": df["name"].iloc[df["price_per_unit"].idxmax()] if "price_per_unit" in df and not df["price_per_unit"].isna().all() else "N/A",
+        "top_prod": df["name"].iloc[df["production_volume"].idxmax()] if "production_volume" in df and not df["production_volume"].isna().all() else "N/A",
+    }
+    return stats
+
+def insert_crop(data):
+    try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -59,8 +77,11 @@ if DATABASE_URL:
                      data["season"], data["year"], data.get("notes", "")),
                 )
             conn.commit()
+    except Exception as e:
+        st.error(f"Error adding crop: {e}")
 
-    def update_crop(crop_id, data):
+def update_crop(crop_id, data):
+    try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -72,61 +93,150 @@ if DATABASE_URL:
                      data["season"], data["year"], data.get("notes", ""), crop_id),
                 )
             conn.commit()
+    except Exception as e:
+        st.error(f"Error updating crop: {e}")
 
-    def delete_crop(crop_id):
+def delete_crop(crop_id):
+    try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM crops WHERE id=%s", (crop_id,))
             conn.commit()
+    except Exception as e:
+        st.error(f"Error deleting crop: {e}")
 
-else:
-    # CSV fallback
-    def load_crops():
-        try:
-            df = pd.read_csv(CSV_FILE)
-        except FileNotFoundError:
-            df = pd.DataFrame(columns=[
-                "id","name","category","price_per_unit","unit","production_volume",
-                "production_unit","region","season","year","notes"
-            ])
-        return df
+# ------------------------------
+# Session State
+# ------------------------------
+if "page" not in st.session_state: st.session_state.page = "Dashboard"
+if "edit_crop_id" not in st.session_state: st.session_state.edit_crop_id = None
+if "confirm_delete_id" not in st.session_state: st.session_state.confirm_delete_id = None
 
-    def save_crops(df):
-        df.to_csv(CSV_FILE, index=False)
+# ------------------------------
+# Sidebar Navigation
+# ------------------------------
+with st.sidebar:
+    st.markdown(f"## 🌾 AgriDash")
+    st.markdown("*Agricultural Management System*")
+    st.markdown("---")
+    nav_items = {"Dashboard":"📊","Crops":"🌱","Analytics":"📈","Settings":"⚙️"}
+    for label, icon in nav_items.items():
+        active = st.session_state.page == label
+        if st.button(f"{icon}  {label}", key=f"nav_{label}", use_container_width=True, type="primary" if active else "secondary"):
+            st.session_state.page = label
+            st.session_state.edit_crop_id = None
+            st.session_state.confirm_delete_id = None
+            st.experimental_rerun()
+    st.markdown("---")
+    now = datetime.now()
+    month = now.month
+    season = "Winter"
+    if 3<=month<=5: season="Spring"
+    elif 6<=month<=8: season="Summer"
+    elif 9<=month<=11: season="Autumn"
+    st.caption(f"📅 {season} Season {now.year}")
+    st.caption("👤 Vansh Rohilla — Farm Manager")
 
-    def insert_crop(data):
-        df = load_crops()
-        data["id"] = df["id"].max() + 1 if not df.empty else 1
-        df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
-        save_crops(df)
+# ------------------------------
+# Load Data
+# ------------------------------
+df_all = load_crops()
+stats  = load_stats(df_all)
+page   = st.session_state.page
 
-    def update_crop(crop_id, data):
-        df = load_crops()
-        idx = df.index[df["id"] == crop_id][0]
-        for key in data:
-            df.at[idx, key] = data[key]
-        save_crops(df)
+# ------------------------------
+# Dashboard Page
+# ------------------------------
+if page=="Dashboard":
+    st.title("📊 Agricultural Dashboard")
+    st.markdown("Overview of crop prices, production volumes, and category trends.")
+    st.markdown("---")
+    c1,c2,c3,c4 = st.columns(4)
+    c1.metric("🌾 Total Crops", stats["total"])
+    c2.metric("💰 Avg Price / Unit", f"{stats['avg_price']:,.2f}")
+    c3.metric("🏭 Total Production", f"{stats['total_prod']:,.0f}")
+    c4.metric("🏆 Top by Price", stats["top_price"])
+    st.markdown("---")
+    if df_all.empty:
+        st.info("No crop data found. Add some crops in the Crops section.")
+    else:
+        col_left,col_right=st.columns([2,1])
+        with col_left:
+            st.subheader("Production Volume — Top Crops")
+            if "name" in df_all and "production_volume" in df_all:
+                prod_df=df_all.groupby("name")["production_volume"].sum().sort_values(ascending=False).head(8).reset_index()
+                fig_bar=px.bar(prod_df,x="name",y="production_volume",color_discrete_sequence=[GREEN],template="plotly_white")
+                fig_bar.update_layout(showlegend=False,margin=dict(t=10,b=10))
+                st.plotly_chart(fig_bar,use_container_width=True)
+        with col_right:
+            st.subheader("Category Distribution")
+            if "category" in df_all:
+                cat_df=df_all.groupby("category").size().reset_index(name="Count")
+                fig_pie=px.pie(cat_df,values="Count",names="category",color_discrete_sequence=COLORS,hole=0.45)
+                fig_pie.update_layout(margin=dict(t=10,b=10))
+                st.plotly_chart(fig_pie,use_container_width=True)
 
-    def delete_crop(crop_id):
-        df = load_crops()
-        df = df[df["id"] != crop_id]
-        save_crops(df)
+# ------------------------------
+# Crops Page (Add/Edit/Delete)
+# ------------------------------
+elif page=="Crops":
+    st.title("🌱 Crop Management")
+    st.markdown("Add, edit, or remove crop records.")
+    st.markdown("---")
+    with st.expander("➕ Add New Crop",expanded=False):
+        with st.form("add_crop_form",clear_on_submit=True):
+            fc1,fc2,fc3=st.columns(3)
+            with fc1:
+                f_name=st.text_input("Crop Name *")
+                f_category=st.selectbox("Category *", ["Grain","Legume","Fiber","Sugar","Vegetable","Fruit","Beverage","Root Crop","Other"])
+                f_region=st.text_input("Region *")
+            with fc2:
+                f_price=st.number_input("Price per Unit *",min_value=0.0,step=0.01)
+                f_unit=st.text_input("Price Unit *",value="kg")
+                f_season=st.selectbox("Season *", ["Kharif","Rabi","Zaid","Summer","Winter","All-year","Rainy","Other"])
+            with fc3:
+                f_prod=st.number_input("Production Volume *",min_value=0.0,step=1.0)
+                f_prod_unit=st.text_input("Production Unit *",value="ton")
+                f_year=st.number_input("Year *",min_value=2000,max_value=2100,value=datetime.now().year)
+            f_notes=st.text_area("Notes",height=80)
+            submitted=st.form_submit_button("Add Crop",type="primary",use_container_width=True)
+            if submitted:
+                if not f_name or not f_region or not f_unit or not f_prod_unit:
+                    st.error("Please fill in all required fields.")
+                else:
+                    insert_crop({"name":f_name,"category":f_category,"price":f_price,"unit":f_unit,
+                                 "production":f_prod,"prod_unit":f_prod_unit,"region":f_region,
+                                 "season":f_season,"year":int(f_year),"notes":f_notes})
+                    st.success(f"✅ '{f_name}' added successfully!")
+                    st.experimental_rerun()
 
-# -------------------
-# Stats function (common)
-# -------------------
-def load_stats(df):
-    if df.empty:
-        return {"total": 0, "avg_price": 0, "total_prod": 0, "top_price": "N/A", "top_prod": "N/A"}
-    return {
-        "total": len(df),
-        "avg_price": df["price_per_unit"].mean(),
-        "total_prod": df["production_volume"].sum(),
-        "top_price": df.loc[df["price_per_unit"].idxmax(), "name"],
-        "top_prod": df.loc[df["production_volume"].idxmax(), "name"],
-    }
+# ------------------------------
+# Analytics Page
+# ------------------------------
+elif page=="Analytics":
+    st.title("📈 Analytics")
+    st.markdown("Deep-dive into production and price trends.")
+    st.markdown("---")
+    if df_all.empty:
+        st.info("No data to analyze yet.")
+    else:
+        # India MSP Trend
+        india_df = df_all[df_all.get("production_unit","")=="lakh MT"].copy()
+        global_df = df_all[df_all.get("production_unit","")=="ton"].copy()
+        if not india_df.empty:
+            st.subheader("India MSP Price Trend (₹/quintal)")
+            msp_fig = px.line(india_df.sort_values("year"), x="year", y="price_per_unit", color="name",
+                              markers=True, template="plotly_white", color_discrete_sequence=[GREEN,GOLD,TERRACOTTA],
+                              labels={"year":"Year","price_per_unit":"MSP (₹/quintal)","name":"Crop"})
+            msp_fig.update_traces(line_width=3, marker_size=9)
+            msp_fig.update_layout(margin=dict(t=10,b=10))
+            st.plotly_chart(msp_fig,use_container_width=True)
 
-# -------------------
-# Rest of your app remains the same
-# -------------------
-# (sidebar, dashboard, crops, analytics, settings)
+# ------------------------------
+# Settings Page
+# ------------------------------
+elif page=="Settings":
+    st.title("⚙️ Settings")
+    st.markdown("Manage your profile and preferences.")
+    st.markdown("---")
+    st.checkbox("Price alerts (when price changes > 10%)", value=True)
