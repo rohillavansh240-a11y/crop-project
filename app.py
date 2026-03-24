@@ -45,10 +45,13 @@ col3.markdown(f"<div class='metric-box'><h3>Total Production</h3><h2>{total_prod
 col4.markdown(f"<div class='metric-box'><h3>Top Crop</h3><h2>{top_crop}</h2></div>", unsafe_allow_html=True)
 
 # ===== SIDEBAR =====
-st.sidebar.title("⚙️ Filter")
+search = st.sidebar.text_input("🔍 Search Crop")
+filtered = filtered[filtered['Crop'].str.contains(search, case=False, na=False)]
 crop = st.sidebar.selectbox("Select Crop", data['Crop'].unique())
+theme = st.sidebar.radio("Theme", ["Dark", "Light"])
 
-filtered = data[data['Crop'] == crop]
+filtered = csv = filtered.to_csv(index=False)
+st.download_button("⬇️ Download Data", csv, "crop_data.csv")
 
 # ===== CHARTS =====
 st.markdown("## 📊 Analytics")
