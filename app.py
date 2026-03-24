@@ -5,7 +5,7 @@ import plotly.express as px
 # Page config
 st.set_page_config(page_title="Crop Dashboard", layout="wide")
 
-# Custom CSS (Modern UI)
+# Custom CSS
 st.markdown("""
 <style>
 .main {
@@ -30,10 +30,25 @@ st.title("🌾 Smart Crop Dashboard")
 # Load data
 data = pd.read_csv("crop_data.csv")
 
+# ===== SIDEBAR =====
+crop = st.sidebar.selectbox("🌱 Select Crop", data['Crop'].unique())
+search = st.sidebar.text_input("🔍 Search Crop")
+theme = st.sidebar.radio("Theme", ["Dark", "Light"])
+
+# ===== FILTER =====
+filtered = data[data['Crop'] == crop]
+
+if search:
+    filtered = filtered[filtered['Crop'].str.contains(search, case=False, na=False)]
+
+# ===== DOWNLOAD BUTTON =====
+csv = filtered.to_csv(index=False)
+st.download_button("⬇️ Download Data", csv, "crop_data.csv")
+
 # ===== STATS =====
 total_crops = data['Crop'].nunique()
-avg_price = data['Price'].mean()
-total_production = data['Production'].sum()
+avg_price = filtered['Price'].mean()
+total_production = filtered['Production'].sum()
 top_crop = data.groupby('Crop')['Production'].sum().idxmax()
 
 # ===== STAT CARDS =====
@@ -43,15 +58,6 @@ col1.markdown(f"<div class='metric-box'><h3>Total Crops</h3><h2>{total_crops}</h
 col2.markdown(f"<div class='metric-box'><h3>Avg Price</h3><h2>{avg_price:.2f}</h2></div>", unsafe_allow_html=True)
 col3.markdown(f"<div class='metric-box'><h3>Total Production</h3><h2>{total_production:.0f}</h2></div>", unsafe_allow_html=True)
 col4.markdown(f"<div class='metric-box'><h3>Top Crop</h3><h2>{top_crop}</h2></div>", unsafe_allow_html=True)
-
-# ===== SIDEBAR =====
-search = st.sidebar.text_input("🔍 Search Crop")
-filtered = filtered[filtered['Crop'].str.contains(search, case=False, na=False)]
-crop = st.sidebar.selectbox("Select Crop", data['Crop'].unique())
-theme = st.sidebar.radio("Theme", ["Dark", "Light"])
-
-filtered = csv = filtered.to_csv(index=False)
-st.download_button("⬇️ Download Data", csv, "crop_data.csv")
 
 # ===== CHARTS =====
 st.markdown("## 📊 Analytics")
