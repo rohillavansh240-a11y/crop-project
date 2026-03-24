@@ -3,20 +3,10 @@ import pandas as pd
 import plotly.express as px
 import time
 
-# Page config
+# ---------- Page Config ----------
 st.set_page_config(page_title="Crop Dashboard", layout="wide")
 
-# ---------- Sidebar Navbar ----------
-st.sidebar.title("🌾 Navigation")
-
-page = st.sidebar.radio("Go to", [
-    "Dashboard",
-    "Production",
-    "Category",
-    "Price Trend"
-])
-
-# ---------- Fake Loading ----------
+# ---------- Loading ----------
 with st.spinner("Gathering harvest data..."):
     time.sleep(1)
 
@@ -29,46 +19,79 @@ avg_price = data['Price'].mean()
 total_production = data['Production'].sum()
 top_crop = data.groupby('Crop')['Production'].sum().idxmax()
 
-# ---------- Dashboard ----------
-if page == "Dashboard":
+# ---------- Hero Section ----------
+st.markdown("""
+<div style="
+background: linear-gradient(90deg,#16a34a,#22c55e);
+padding:40px;
+border-radius:25px;
+color:white;
+box-shadow:0 10px 30px rgba(0,0,0,0.2);
+">
+<h1 style="font-size:40px;">🌾 Agricultural Overview</h1>
+<p style="font-size:18px;opacity:0.9;">
+Track crop performance, market prices, and production volumes.
+</p>
+</div>
+""", unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="background: linear-gradient(90deg,#16a34a,#22c55e);
-    padding:30px;border-radius:20px;color:white">
-    <h1>Agricultural Overview</h1>
-    <p>Track crop performance, market prices, and production volumes.</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
+# ---------- Stats Cards ----------
+col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Total Crops", total_crops)
-    col2.metric("Avg Price", f"₹{avg_price:.2f}")
-    col3.metric("Total Production", f"{total_production}")
-    col4.metric("Top Crop", top_crop)
+col1.markdown(f"""
+<div style="background:#111;padding:20px;border-radius:15px">
+<h4>🌱 Total Crops</h4>
+<h2>{total_crops}</h2>
+</div>
+""", unsafe_allow_html=True)
 
-# ---------- Production Page ----------
-elif page == "Production":
-    st.markdown("## 📊 Production Volume")
+col2.markdown(f"""
+<div style="background:#111;padding:20px;border-radius:15px">
+<h4>💰 Avg Price</h4>
+<h2>₹{avg_price:.2f}</h2>
+</div>
+""", unsafe_allow_html=True)
 
+col3.markdown(f"""
+<div style="background:#111;padding:20px;border-radius:15px">
+<h4>⚖️ Production</h4>
+<h2>{total_production}</h2>
+</div>
+""", unsafe_allow_html=True)
+
+col4.markdown(f"""
+<div style="background:#111;padding:20px;border-radius:15px">
+<h4>📈 Top Crop</h4>
+<h2>{top_crop}</h2>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ---------- Charts Grid ----------
+colA, colB = st.columns([2,1])
+
+# Production Chart (big)
+with colA:
+    st.markdown("### 📊 Production Volumes")
     prod_data = data.groupby('Crop')['Production'].sum().reset_index()
     fig1 = px.bar(prod_data, x='Crop', y='Production')
     st.plotly_chart(fig1, use_container_width=True)
 
-# ---------- Category Page ----------
-elif page == "Category":
-    st.markdown("## 🌾 Category Distribution")
-
+# Category Chart
+with colB:
+    st.markdown("### 🌾 Category Breakdown")
     if 'Category' in data.columns:
         cat_data = data['Category'].value_counts().reset_index()
         cat_data.columns = ['Category', 'Count']
         fig2 = px.pie(cat_data, names='Category', values='Count')
         st.plotly_chart(fig2, use_container_width=True)
 
-# ---------- Price Trend Page ----------
-elif page == "Price Trend":
-    st.markdown("## 💰 Price Trend")
+# Full Width Price Chart
+st.markdown("### 💰 Market Price Comparison")
 
-    if 'Year' in data.columns:
-        fig3 = px.line(data, x='Year', y='Price', color='Crop')
-        st.plotly_chart(fig3, use_container_width=True)
+if 'Year' in data.columns:
+    fig3 = px.line(data, x='Year', y='Price', color='Crop')
+    st.plotly_chart(fig3, use_container_width=True)
