@@ -2,8 +2,6 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from datetime import datetime
 
 # ------------------------------
@@ -19,37 +17,25 @@ STEEL_BLUE   = "#457b9d"
 OLIVE        = "#606c38"
 COLORS       = [GREEN, GOLD, TERRACOTTA, STEEL_BLUE, OLIVE, LIGHT_GREEN, "#6d4c41", "#a8dadc"]
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# ------------------------------
+# CSV File
+# ------------------------------
+DATA_FILE = "crops.csv"
 
 # ------------------------------
-# Database Functions
+# Database Functions (CSV based)
 # ------------------------------
-def get_conn():
-    if not DATABASE_URL:
-        st.error("⚠️ DATABASE_URL environment variable not set.")
-        st.stop()
-    try:
-        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    except Exception as e:
-        st.error(f"⚠️ Database connection failed: {e}")
-        st.stop()
-
 def load_crops():
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM crops ORDER BY created_at DESC")
-                rows = cur.fetchall()
-        if not rows:
-            return pd.DataFrame()
-        df = pd.DataFrame([dict(r) for r in rows])
-        for col in ["price_per_unit", "production_volume"]:
+        df = pd.read_csv(DATA_FILE)
+        for col in ["price_per_unit","production_volume"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
-    except Exception as e:
-        st.error(f"Error loading crops: {e}")
-        return pd.DataFrame()
+    except FileNotFoundError:
+        # Agar CSV nahi hai to empty DataFrame return karo
+        return pd.DataFrame(columns=["id","name","category","price_per_unit","unit","production_volume",
+                                     "production_unit","region","season","year","notes"])
 
 def load_stats(df):
     if df.empty:
@@ -65,45 +51,37 @@ def load_stats(df):
     return stats
 
 def insert_crop(data):
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO crops (name, category, price_per_unit, unit,
-                       production_volume, production_unit, region, season, year, notes)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (data["name"], data["category"], data["price"], data["unit"],
-                     data["production"], data["prod_unit"], data["region"],
-                     data["season"], data["year"], data.get("notes", "")),
-                )
-            conn.commit()
-    except Exception as e:
-        st.error(f"Error adding crop: {e}")
+    df = load_crops()
+    next_id = df["id"].max()+1 if not df.empty else 1
+    data_row = {
+        "id": next_id,
+        "name": data["name"],
+        "category": data["category"],
+        "price_per_unit": data["price"],
+        "unit": data["unit"],
+        "production_volume": data["production"],
+        "production_unit": data["prod_unit"],
+        "region": data["region"],
+        "season": data["season"],
+        "year": data["year"],
+        "notes": data.get("notes","")
+    }
+    df = pd.concat([df, pd.DataFrame([data_row])], ignore_index=True)
+    df.to_csv(DATA_FILE, index=False)
 
 def update_crop(crop_id, data):
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """UPDATE crops SET name=%s, category=%s, price_per_unit=%s, unit=%s,
-                       production_volume=%s, production_unit=%s, region=%s, season=%s,
-                       year=%s, notes=%s, updated_at=NOW() WHERE id=%s""",
-                    (data["name"], data["category"], data["price"], data["unit"],
-                     data["production"], data["prod_unit"], data["region"],
-                     data["season"], data["year"], data.get("notes", ""), crop_id),
-                )
-            conn.commit()
-    except Exception as e:
-        st.error(f"Error updating crop: {e}")
+    df = load_crops()
+    if df.empty: return
+    df.loc[df["id"]==crop_id, ["name","category","price_per_unit","unit","production_volume","production_unit","region","season","year","notes"]] = [
+        data["name"], data["category"], data["price"], data["unit"], data["production"], data["prod_unit"], data["region"], data["season"], data["year"], data.get("notes","")
+    ]
+    df.to_csv(DATA_FILE, index=False)
 
 def delete_crop(crop_id):
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM crops WHERE id=%s", (crop_id,))
-            conn.commit()
-    except Exception as e:
-        st.error(f"Error deleting crop: {e}")
+    df = load_crops()
+    if df.empty: return
+    df = df[df["id"] != crop_id]
+    df.to_csv(DATA_FILE, index=False)
 
 # ------------------------------
 # Session State
@@ -126,7 +104,7 @@ with st.sidebar:
             st.session_state.page = label
             st.session_state.edit_crop_id = None
             st.session_state.confirm_delete_id = None
-            st.rerun()
+            st.experimental_rerun()
     st.markdown("---")
     now = datetime.now()
     month = now.month
@@ -180,7 +158,6 @@ if page=="Dashboard":
 # Crops Page (Add/Edit/Delete)
 # ------------------------------
 elif page=="Crops":
-    st.rerun()
     st.markdown("Add, edit, or remove crop records.")
     st.markdown("---")
     with st.expander("➕ Add New Crop",expanded=False):
@@ -220,17 +197,14 @@ elif page=="Analytics":
     if df_all.empty:
         st.info("No data to analyze yet.")
     else:
-        # India MSP Trend
-        india_df = df_all[df_all.get("production_unit","")=="lakh MT"].copy()
-        global_df = df_all[df_all.get("production_unit","")=="ton"].copy()
-        if not india_df.empty:
-            st.subheader("India MSP Price Trend (₹/quintal)")
-            msp_fig = px.line(india_df.sort_values("year"), x="year", y="price_per_unit", color="name",
-                              markers=True, template="plotly_white", color_discrete_sequence=[GREEN,GOLD,TERRACOTTA],
-                              labels={"year":"Year","price_per_unit":"MSP (₹/quintal)","name":"Crop"})
-            msp_fig.update_traces(line_width=3, marker_size=9)
-            msp_fig.update_layout(margin=dict(t=10,b=10))
-            st.plotly_chart(msp_fig,use_container_width=True)
+        st.subheader("Price vs Production Scatter")
+        scatter_fig = px.scatter(df_all, x="price_per_unit", y="production_volume",
+                                 color="category", size="production_volume",
+                                 hover_name="name", template="plotly_white",
+                                 color_discrete_sequence=COLORS,
+                                 labels={"price_per_unit":"Price per Unit","production_volume":"Production","category":"Category"})
+        scatter_fig.update_layout(margin=dict(t=10,b=10))
+        st.plotly_chart(scatter_fig,use_container_width=True)
 
 # ------------------------------
 # Settings Page
