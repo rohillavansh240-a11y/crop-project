@@ -126,7 +126,7 @@ with st.sidebar:
             st.session_state.page = label
             st.session_state.edit_crop_id = None
             st.session_state.confirm_delete_id = None
-           st.rerun()
+            st.rerun()
     st.markdown("---")
     now = datetime.now()
     month = now.month
