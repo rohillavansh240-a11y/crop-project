@@ -3,4 +3,4 @@ pandas
 scikit-learn
 matplotlib
 plotly
-
+psycopg2-binary
