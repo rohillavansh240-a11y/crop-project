@@ -2,96 +2,131 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import time
+from sklearn.linear_model import LinearRegression
 
 # ---------- Page Config ----------
-st.set_page_config(page_title="Crop Dashboard", layout="wide")
+st.set_page_config(page_title="Crop Dashboard Pro", layout="wide")
 
-# ---------- Loading ----------
-with st.spinner("Gathering harvest data..."):
-    time.sleep(1)
+# ---------- Simple Login ----------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("🔐 Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username == "admin" and password == "1234":
+            st.session_state.logged_in = True
+            st.rerun()
+        else:
+            st.error("Wrong credentials")
+
+    st.stop()
+
+# ---------- Glass UI ----------
+st.markdown("""
+<style>
+.header {
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(10px);
+    background: rgba(22,163,74,0.6);
+    padding: 15px;
+    border-radius: 12px;
+    color: white;
+    margin-bottom: 20px;
+}
+.card {
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
+    border-radius: 15px;
+    backdrop-filter: blur(8px);
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- Header ----------
+st.markdown("""
+<div class="header">
+<h2>🌾 Crop Dashboard Pro</h2>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------- Load Data ----------
 data = pd.read_csv("crop_data.csv")
 
-# ---------- Stats ----------
-total_crops = data['Crop'].nunique()
-avg_price = data['Price'].mean()
-total_production = data['Production'].sum()
-top_crop = data.groupby('Crop')['Production'].sum().idxmax()
+# ---------- Sidebar ----------
+st.sidebar.title("🌾 Navigation")
 
-# ---------- Hero Section ----------
-st.markdown("""
-<div style="
-background: linear-gradient(90deg,#16a34a,#22c55e);
-padding:40px;
-border-radius:25px;
-color:white;
-box-shadow:0 10px 30px rgba(0,0,0,0.2);
-">
-<h1 style="font-size:40px;">🌾 Agricultural Overview</h1>
-<p style="font-size:18px;opacity:0.9;">
-Track crop performance, market prices, and production volumes.
-</p>
-</div>
-""", unsafe_allow_html=True)
+page = st.sidebar.radio("Go to", [
+    "Dashboard",
+    "Analytics",
+    "Prediction"
+])
 
-st.markdown("<br>", unsafe_allow_html=True)
+# ---------- Filters ----------
+st.sidebar.markdown("### 🔍 Filters")
 
-# ---------- Stats Cards ----------
-col1, col2, col3, col4 = st.columns(4)
+crop_filter = st.sidebar.selectbox("Select Crop", ["All"] + list(data['Crop'].unique()))
+year_filter = st.sidebar.selectbox("Select Year", ["All"] + list(data['Year'].unique()))
 
-col1.markdown(f"""
-<div style="background:#111;padding:20px;border-radius:15px">
-<h4>🌱 Total Crops</h4>
-<h2>{total_crops}</h2>
-</div>
-""", unsafe_allow_html=True)
+filtered_data = data.copy()
 
-col2.markdown(f"""
-<div style="background:#111;padding:20px;border-radius:15px">
-<h4>💰 Avg Price</h4>
-<h2>₹{avg_price:.2f}</h2>
-</div>
-""", unsafe_allow_html=True)
+if crop_filter != "All":
+    filtered_data = filtered_data[filtered_data['Crop'] == crop_filter]
 
-col3.markdown(f"""
-<div style="background:#111;padding:20px;border-radius:15px">
-<h4>⚖️ Production</h4>
-<h2>{total_production}</h2>
-</div>
-""", unsafe_allow_html=True)
+if year_filter != "All":
+    filtered_data = filtered_data[filtered_data['Year'] == year_filter]
 
-col4.markdown(f"""
-<div style="background:#111;padding:20px;border-radius:15px">
-<h4>📈 Top Crop</h4>
-<h2>{top_crop}</h2>
-</div>
-""", unsafe_allow_html=True)
+# ---------- Dashboard ----------
+if page == "Dashboard":
 
-st.markdown("<br>", unsafe_allow_html=True)
+    total_crops = filtered_data['Crop'].nunique()
+    avg_price = filtered_data['Price'].mean()
+    total_production = filtered_data['Production'].sum()
+    top_crop = filtered_data.groupby('Crop')['Production'].sum().idxmax()
 
-# ---------- Charts Grid ----------
-colA, colB = st.columns([2,1])
+    col1, col2, col3, col4 = st.columns(4)
 
-# Production Chart (big)
-with colA:
-    st.markdown("### 📊 Production Volumes")
-    prod_data = data.groupby('Crop')['Production'].sum().reset_index()
+    col1.markdown(f"<div class='card'>🌱 Crops<br><h2>{total_crops}</h2></div>", unsafe_allow_html=True)
+    col2.markdown(f"<div class='card'>💰 Price<br><h2>₹{avg_price:.2f}</h2></div>", unsafe_allow_html=True)
+    col3.markdown(f"<div class='card'>⚖️ Production<br><h2>{total_production}</h2></div>", unsafe_allow_html=True)
+    col4.markdown(f"<div class='card'>📈 Top<br><h2>{top_crop}</h2></div>", unsafe_allow_html=True)
+
+# ---------- Analytics ----------
+elif page == "Analytics":
+
+    st.markdown("## 📊 Production")
+    prod_data = filtered_data.groupby('Crop')['Production'].sum().reset_index()
     fig1 = px.bar(prod_data, x='Crop', y='Production')
     st.plotly_chart(fig1, use_container_width=True)
 
-# Category Chart
-with colB:
-    st.markdown("### 🌾 Category Breakdown")
-    if 'Category' in data.columns:
-        cat_data = data['Category'].value_counts().reset_index()
+    st.markdown("## 🌾 Category")
+    if 'Category' in filtered_data.columns:
+        cat_data = filtered_data['Category'].value_counts().reset_index()
         cat_data.columns = ['Category', 'Count']
         fig2 = px.pie(cat_data, names='Category', values='Count')
         st.plotly_chart(fig2, use_container_width=True)
 
-# Full Width Price Chart
-st.markdown("### 💰 Market Price Comparison")
-
-if 'Year' in data.columns:
-    fig3 = px.line(data, x='Year', y='Price', color='Crop')
+    st.markdown("## 💰 Price Trend")
+    fig3 = px.line(filtered_data, x='Year', y='Price', color='Crop')
     st.plotly_chart(fig3, use_container_width=True)
+
+# ---------- Prediction ----------
+elif page == "Prediction":
+
+    st.markdown("## 🤖 Price Prediction")
+
+    model = LinearRegression()
+    X = data[['Year']]
+    y = data['Price']
+    model.fit(X, y)
+
+    year = st.number_input("Enter Year", 2025, 2035)
+
+    if st.button("Predict"):
+        pred = model.predict([[year]])
+        st.success(f"Predicted Price: ₹{pred[0]:.2f}")
