@@ -17,6 +17,23 @@ st.sidebar.header("Select Options")
 crop = st.sidebar.selectbox("🌱 Select Crop", data['Crop'].unique())
 year = st.sidebar.number_input("📅 Enter Year", 2000, 2035)
 
+# -------- SETTINGS OPTIONS --------
+st.sidebar.subheader("🔧 Display Settings")
+
+show_graph = st.sidebar.checkbox("Show Graph", True)
+show_data = st.sidebar.checkbox("Show Raw Data", False)
+
+theme = st.sidebar.selectbox("Theme", ["Light", "Dark"])
+graph_style = st.sidebar.selectbox("Graph Style", ["Default", "ggplot", "seaborn"])
+
+# Apply graph style
+if graph_style == "ggplot":
+    plt.style.use("ggplot")
+elif graph_style == "seaborn":
+    plt.style.use("seaborn")
+else:
+    plt.style.use("default")
+
 # Filter data
 filtered_data = data[data['Crop'] == crop]
 
