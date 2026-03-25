@@ -130,11 +130,106 @@ elif menu == "Management":
 
 # ---------------- ANALYTICS ----------------
 elif menu == "Analytics":
-    st.title("📈 Analytics")
+    st.title("📈 Advanced Analytics Dashboard")
 
-    if not filtered_df.empty:
-        fig = px.scatter(filtered_df, x="price", y="volume", size="volume", color="category")
-        st.plotly_chart(fig, use_container_width=True)
+    if filtered_df.empty:
+        st.warning("No data available")
+    else:
+        df = filtered_df.copy()
+
+        # ---------- KPI CARDS ----------
+        st.subheader("📊 Key Insights")
+
+        top_crop = df.groupby("name")["volume"].sum().idxmax()
+        avg_price = df["price"].mean()
+        total_value = (df["price"] * df["volume"]).sum()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Top Crop", top_crop)
+        c2.metric("Avg Price", f"₹ {avg_price:.2f}")
+        c3.metric("Market Value", f"₹ {total_value:,.0f}")
+
+        st.divider()
+
+        # ---------- TREND ANALYSIS ----------
+        st.subheader("📉 Year-wise Trend")
+
+        if "year" in df.columns:
+            trend = df.groupby("year")[["price", "volume"]].mean().reset_index()
+
+            fig_trend = px.line(trend, x="year", y=["price", "volume"],
+                                markers=True, template="plotly_white")
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+        # ---------- PROFIT ESTIMATION ----------
+        st.subheader("💰 Profit Estimation")
+
+        df["estimated_profit"] = df["price"] * df["volume"]
+
+        fig_profit = px.bar(df, x="name", y="estimated_profit",
+                            color="category", title="Profit by Crop")
+        st.plotly_chart(fig_profit, use_container_width=True)
+
+        st.divider()
+
+        # ---------- HEATMAP STYLE (CATEGORY VS REGION) ----------
+        st.subheader("🌍 Region vs Category")
+
+        pivot = df.pivot_table(values="volume",
+                               index="region",
+                               columns="category",
+                               aggfunc="sum",
+                               fill_value=0)
+
+        st.dataframe(pivot, use_container_width=True)
+
+        st.divider()
+
+        # ---------- SCATTER ANALYSIS ----------
+        st.subheader("🔍 Price vs Volume Analysis")
+
+        fig_scatter = px.scatter(df,
+                                x="price",
+                                y="volume",
+                                size="volume",
+                                color="category",
+                                hover_name="name")
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+        st.divider()
+
+        # ---------- SIMPLE FORECAST ----------
+        st.subheader("🔮 Future Prediction (Basic)")
+
+        if len(df["year"].unique()) > 1:
+            growth = df.groupby("year")["price"].mean().pct_change().mean()
+            next_price = avg_price * (1 + growth)
+
+            st.success(f"Estimated Next Year Avg Price: ₹ {next_price:.2f}")
+        else:
+            st.info("Need multiple years data for prediction")
+
+        st.divider()
+
+        # ---------- SMART INSIGHTS ----------
+        st.subheader("🤖 Smart Insights")
+
+        insights = []
+
+        if df["price"].mean() > 3000:
+            insights.append("High-value crops dominate the market")
+
+        if df["volume"].sum() > 200:
+            insights.append("Production volume is strong")
+
+        if len(df["region"].unique()) > 2:
+            insights.append("Diverse regional distribution")
+
+        if insights:
+            for i in insights:
+                st.success(i)
+        else:
+            st.info("No strong insights yet")
 
 # ---------------- SETTINGS ----------------
 elif menu == "Settings":
