@@ -1,155 +1,172 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import sqlite3
 from datetime import datetime
-import os
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(
-    page_title="AgriDash | Local Edition",
-    page_icon="🌾",
-    layout="wide"
-)
+st.set_page_config(page_title="AgriDash", layout="wide")
 
-# --- 2. DATABASE SETUP (Local SQLite) ---
-# Ye function database file banayega aur table create karengi agar nahi hai toh.
-def init_db():
-    conn = sqlite3.connect('agri_data.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS crops (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            category TEXT,
-            price_per_unit REAL,
-            production_volume REAL,
-            region TEXT,
-            year INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# ---------------- SESSION STATE ----------------
+if "confirm_delete_id" not in st.session_state:
+    st.session_state.confirm_delete_id = None
 
-init_db()
-
-# --- 3. DATA FUNCTIONS ---
+# ---------------- SAMPLE DATA ----------------
 def load_data():
-    conn = sqlite3.connect('agri_data.db')
-    df = pd.read_sql_query("SELECT * FROM crops ORDER BY id DESC", conn)
-    conn.close()
-    return df
+    return pd.DataFrame([
+        {
+            "id": 1, "name": "Wheat", "category": "Grain",
+            "price_per_unit": 2200, "unit": "quintal",
+            "production_volume": 110, "production_unit": "lakh MT",
+            "region": "North", "season": "Rabi", "year": 2023,
+            "notes": "Yield: 3.5 t/ha"
+        },
+        {
+            "id": 2, "name": "Rice", "category": "Grain",
+            "price_per_unit": 2100, "unit": "quintal",
+            "production_volume": 130, "production_unit": "lakh MT",
+            "region": "East", "season": "Kharif", "year": 2023,
+            "notes": "Yield: 4.2 t/ha"
+        }
+    ])
 
-def add_crop(name, cat, price, vol, reg, year):
-    conn = sqlite3.connect('agri_data.db')
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO crops (name, category, price_per_unit, production_volume, region, year)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (name, cat, price, vol, reg, year))
-    conn.commit()
-    conn.close()
+df_all = load_data()
+
+# ---------------- FUNCTIONS ----------------
+def update_crop(crop_id, new_data):
+    global df_all
+    for key, value in new_data.items():
+        df_all.loc[df_all["id"] == crop_id, key] = value
 
 def delete_crop(crop_id):
-    conn = sqlite3.connect('agri_data.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM crops WHERE id=?", (crop_id,))
-    conn.commit()
-    conn.close()
+    global df_all
+    df_all = df_all[df_all["id"] != crop_id]
 
-# --- 4. THEME & SIDEBAR ---
-GREEN = "#2d6a4f"
-COLORS = [GREEN, "#f4a261", "#e76f51", "#457b9d", "#606c38"]
+# ---------------- UI ----------------
+page = st.sidebar.radio("Navigation", ["Dashboard", "Edit", "Analytics", "Settings"])
 
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
+# ---------------- DASHBOARD ----------------
+if page == "Dashboard":
+    st.title("🌾 Crop Dashboard")
 
-with st.sidebar:
-    st.title("🌾 AgriDash")
-    st.info("Mode: Local Database (SQLite)")
-    st.markdown("---")
-    for p in ["Dashboard", "Manage Crops", "Analytics"]:
-        if st.button(p, use_container_width=True):
-            st.session_state.page = p
-            st.rerun()
-    st.markdown("---")
-    st.caption("Manager: Vansh Rohilla")
+    display_cols = [
+        "id", "name", "category", "price_per_unit", "unit",
+        "production_volume", "production_unit",
+        "region", "season", "year", "notes"
+    ]
 
-df = load_data()
+    filtered = df_all.copy()
 
-# --- 5. PAGES ---
+    cols = [c for c in display_cols if c in filtered.columns]
 
-if st.session_state.page == "Dashboard":
-    st.title("📊 Farm Overview")
-    
-    if df.empty:
-        st.warning("Abhi tak koi data nahi hai. 'Manage Crops' mein jaakar add karein.")
-    else:
-        # Metrics Row
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total Entries", len(df))
-        m2.metric("Avg Price", f"₹{df['price_per_unit'].mean():,.2f}")
-        m3.metric("Total Production", f"{df['production_volume'].sum():,.0f} T")
+    st.dataframe(
+        filtered[cols].rename(columns={
+            "id": "ID",
+            "name": "Name",
+            "category": "Category",
+            "price_per_unit": "Price",
+            "unit": "Price Unit",
+            "production_volume": "Production",
+            "production_unit": "Prod. Unit",
+            "region": "Region",
+            "season": "Season",
+            "year": "Year",
+            "notes": "Notes",
+        }),
+        use_container_width=True,
+        height=400,
+        hide_index=True,
+    )
 
-        st.markdown("---")
-        
-        # Charts Row
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.subheader("Top Crops by Production")
-            fig = px.bar(df.head(10), x="name", y="production_volume", color="category", color_discrete_sequence=COLORS)
-            st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            st.subheader("Category Breakdown")
-            fig_pie = px.pie(df, names="category", hole=0.4, color_discrete_sequence=COLORS)
-            st.plotly_chart(fig_pie, use_container_width=True)
+# ---------------- EDIT PAGE ----------------
+elif page == "Edit":
+    st.title("✏️ Edit / Delete Crop")
 
-elif st.session_state.page == "Manage Crops":
-    st.title("🌱 Manage Crop Records")
-    
-    # Add Form
-    with st.expander("➕ Add New Crop", expanded=True):
-        with st.form("add_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Crop Name")
-                cat = st.selectbox("Category", ["Grain", "Vegetable", "Fruit", "Fiber", "Other"])
-                price = st.number_input("Price (per kg)", min_value=0.0)
-            with col2:
-                vol = st.number_input("Production (Tons)", min_value=0.0)
-                reg = st.text_input("Region")
-                year = st.number_input("Year", value=2026)
-            
-            if st.form_submit_button("Save to Database", use_container_width=True):
-                if name and reg:
-                    add_crop(name, cat, price, vol, reg, year)
-                    st.success(f"{name} save ho gaya!")
+    crop_options = {f"{row['id']} — {row['name']}": row["id"] for _, row in df_all.iterrows()}
+    selected_label = st.selectbox("Select crop", list(crop_options.keys()))
+    selected_id = crop_options[selected_label]
+
+    row = df_all[df_all["id"] == selected_id].iloc[0]
+
+    col1, col2 = st.columns(2)
+
+    # -------- EDIT --------
+    with col1:
+        with st.form("edit_form"):
+            st.subheader("Edit Crop")
+
+            name = st.text_input("Name", value=row["name"])
+            category = st.selectbox("Category", ["Grain","Vegetable","Fruit","Other"])
+            price = st.number_input("Price", value=float(row["price_per_unit"]))
+            unit = st.text_input("Unit", value=row["unit"])
+            production = st.number_input("Production", value=float(row["production_volume"]))
+            prod_unit = st.text_input("Production Unit", value=row["production_unit"])
+            region = st.text_input("Region", value=row["region"])
+            season = st.selectbox("Season", ["Kharif","Rabi","Zaid"])
+            year = st.number_input("Year", value=int(row["year"]))
+            notes = st.text_area("Notes", value=row["notes"])
+
+            if st.form_submit_button("💾 Save"):
+                update_crop(selected_id, {
+                    "name": name,
+                    "category": category,
+                    "price_per_unit": price,
+                    "unit": unit,
+                    "production_volume": production,
+                    "production_unit": prod_unit,
+                    "region": region,
+                    "season": season,
+                    "year": int(year),
+                    "notes": notes,
+                })
+                st.success("Updated successfully")
+                st.rerun()
+
+    # -------- DELETE --------
+    with col2:
+        st.subheader("Delete Crop")
+        st.warning(f"Delete {row['name']} permanently")
+
+        if st.button("🗑️ Delete"):
+            st.session_state.confirm_delete_id = selected_id
+
+        if st.session_state.confirm_delete_id == selected_id:
+            st.error("Are you sure?")
+            c1, c2 = st.columns(2)
+
+            with c1:
+                if st.button("Yes Delete"):
+                    delete_crop(selected_id)
+                    st.session_state.confirm_delete_id = None
+                    st.success("Deleted")
                     st.rerun()
-                else:
-                    st.error("Please Name aur Region zaroor bharein.")
 
-    # Display Table
-    st.markdown("---")
-    st.subheader("Stored Data")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+            with c2:
+                if st.button("Cancel"):
+                    st.session_state.confirm_delete_id = None
+                    st.rerun()
 
-    # Delete Record
-    if not df.empty:
-        st.markdown("---")
-        st.subheader("🗑️ Delete Record")
-        id_del = st.number_input("Enter ID to delete", min_value=1, step=1)
-        if st.button("Delete Permanently", type="primary"):
-            delete_crop(id_del)
-            st.success(f"Record {id_del} deleted!")
-            st.rerun()
+# ---------------- ANALYTICS ----------------
+elif page == "Analytics":
+    st.title("📈 Analytics")
 
-elif st.session_state.page == "Analytics":
-    st.title("📈 Detailed Analysis")
-    if not df.empty:
-        fig_scatter = px.scatter(df, x="price_per_unit", y="production_volume", 
-                                 size="production_volume", color="category", 
-                                 hover_name="name", template="plotly_white")
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    else:
-        st.info("Analysis ke liye data zaroori hai.")
+    fig = px.line(df_all, x="year", y="price_per_unit", color="name", markers=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    fig2 = px.bar(df_all, x="name", y="production_volume", color="region")
+    st.plotly_chart(fig2, use_container_width=True)
+
+# ---------------- SETTINGS ----------------
+elif page == "Settings":
+    st.title("⚙️ Settings")
+
+    st.subheader("Export Data")
+
+    csv = df_all.to_csv(index=False)
+
+    st.download_button(
+        label="📥 Download CSV",
+        data=csv,
+        file_name=f"crops_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv"
+    )
+
+    st.success("App running perfectly 🚀")
