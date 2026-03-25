@@ -37,19 +37,41 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------- SESSION MENU ----------------
+if "menu" not in st.session_state:
+    st.session_state.menu = "Dashboard"
+
 # ---------------- SIDEBAR ----------------
 st.sidebar.markdown("## 🌾 AgriDash")
 
-menu = st.sidebar.radio("", [
-    "Dashboard",
-    "Crop Management",
-    "Analytics",
-    "Settings"
-])
+menu = st.sidebar.radio(
+    "",
+    ["Dashboard", "Crop Management", "Analytics", "Settings"],
+    index=["Dashboard", "Crop Management", "Analytics", "Settings"].index(st.session_state.menu)
+)
 
+st.session_state.menu = menu
+
+# ---------------- SIDEBAR PROFILE ----------------
 st.sidebar.markdown("---")
-st.sidebar.markdown("👤 Vansh Rohilla")
-st.sidebar.caption("Farm Manager")
+
+st.sidebar.markdown("""
+<div style="background:#f5efe6;padding:15px;border-radius:15px;">
+    <div style="display:flex;align-items:center;">
+        <div style="background:#cdeac0;border-radius:50%;width:40px;height:40px;
+        display:flex;align-items:center;justify-content:center;font-weight:bold;margin-right:10px;">
+        VR
+        </div>
+        <div>
+            <b>Vansh Rohilla</b><br>
+            <small>Farm Manager</small>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+if st.sidebar.button("⚙️ Settings"):
+    st.session_state.menu = "Settings"
 
 # ---------------- DATA ----------------
 @st.cache_data
@@ -93,31 +115,31 @@ if menu == "Dashboard":
 
     c1,c2,c3,c4 = st.columns(4)
 
+    # Safe Top Crop
+    if not df.empty and "production" in df.columns:
+        top_crop = df.loc[df["production"].idxmax(), "name"]
+    else:
+        top_crop = "N/A"
+
     c1.markdown(f'<div class="card"><h4>Total Crops</h4><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="card"><h4>Avg Price</h4><h2>₹{df["price"].mean():.0f}</h2></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="card"><h4>Total Production</h4><h2>{df["production"].sum()}</h2></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="card"><h4>Top Crop</h4><h2>{df.iloc[df["production"].idxmax()]["name"]}</h2></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="card"><h4>Top Crop</h4><h2>{top_crop}</h2></div>', unsafe_allow_html=True)
 
     st.write("")
 
     col1,col2 = st.columns(2)
 
     with col1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        fig = px.bar(df, x="name", y="production", title="Production Volume")
+        fig = px.bar(df, x="name", y="production")
         st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        fig = px.pie(df, names="category", title="Category Breakdown")
+        fig = px.pie(df, names="category")
         st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    fig = px.line(df, x="year", y="price", color="name", markers=True, title="Price Trend")
+    fig = px.line(df, x="year", y="price", color="name", markers=True)
     st.plotly_chart(fig, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- CROP MANAGEMENT ----------------
 elif menu == "Crop Management":
@@ -141,67 +163,51 @@ elif menu == "Crop Management":
             df = pd.concat([df, new_row], ignore_index=True)
             st.success("Crop Added ✅")
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.dataframe(df, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- ANALYTICS ----------------
 elif menu == "Analytics":
 
     st.title("📈 Advanced Analytics")
 
-    col1, col2, col3 = st.columns(3)
+    if not df.empty:
+        min_year = int(df["year"].min())
+        max_year = int(df["year"].max())
 
-    crop_filter = col1.multiselect("Crop", df["name"].unique(), default=df["name"].unique())
-    year_filter = col2.slider("Year", int(df["year"].min()), int(df["year"].max()),
-                             (int(df["year"].min()), int(df["year"].max())))
-    region_filter = col3.multiselect("Region", df["region"].unique(), default=df["region"].unique())
+        col1, col2, col3 = st.columns(3)
 
-    df_filtered = df[
-        (df["name"].isin(crop_filter)) &
-        (df["region"].isin(region_filter)) &
-        (df["year"].between(year_filter[0], year_filter[1]))
-    ]
+        crop_filter = col1.multiselect("Crop", df["name"].unique(), default=df["name"].unique())
+        year_filter = col2.slider("Year", min_year, max_year, (min_year, max_year))
+        region_filter = col3.multiselect("Region", df["region"].unique(), default=df["region"].unique())
 
-    tab1, tab2, tab3 = st.tabs(["📊 Trends", "📉 Distribution", "📦 Comparison"])
+        df_filtered = df[
+            (df["name"].isin(crop_filter)) &
+            (df["region"].isin(region_filter)) &
+            (df["year"].between(year_filter[0], year_filter[1]))
+        ]
 
-    with tab1:
-        fig = px.line(df_filtered, x="year", y="price", color="name", markers=True)
-        st.plotly_chart(fig, use_container_width=True)
+        tab1, tab2, tab3 = st.tabs(["📊 Trends", "📉 Distribution", "📦 Comparison"])
 
-    with tab2:
-        fig = px.histogram(df_filtered, x="price")
-        st.plotly_chart(fig, use_container_width=True)
+        with tab1:
+            st.plotly_chart(px.line(df_filtered, x="year", y="price", color="name"), use_container_width=True)
 
-    with tab3:
-        fig = px.bar(df_filtered, x="name", y="production", color="name")
-        st.plotly_chart(fig, use_container_width=True)
+        with tab2:
+            st.plotly_chart(px.histogram(df_filtered, x="price"), use_container_width=True)
 
-    st.markdown("### 📌 Insights")
+        with tab3:
+            st.plotly_chart(px.bar(df_filtered, x="name", y="production"), use_container_width=True)
 
-    if not df_filtered.empty:
-        st.info(f"Highest Price: {df_filtered.loc[df_filtered['price'].idxmax()]['name']}")
-        st.info(f"Lowest Price: {df_filtered.loc[df_filtered['price'].idxmin()]['name']}")
-
-    fig = px.scatter(df_filtered, x="production", y="price", color="name")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.download_button("⬇ Download Data", df_filtered.to_csv(index=False), "data.csv")
+        st.download_button("⬇ Download Data", df_filtered.to_csv(index=False), "data.csv")
 
 # ---------------- SETTINGS ----------------
 elif menu == "Settings":
 
     st.title("⚙️ Settings")
 
-    st.markdown("### 🎨 UI Settings")
     theme = st.selectbox("Theme", ["Light", "Dark"])
-    currency = st.selectbox("Currency", ["₹ INR", "$ USD", "€ EUR"])
+    currency = st.selectbox("Currency", ["₹ INR", "$ USD"])
 
-    st.markdown("### 📊 Chart Settings")
     chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
-    show_data = st.checkbox("Show Raw Data", True)
-
-    st.markdown("### 🔔 Alerts")
     alert = st.slider("Price Alert %", 1, 50, 10)
 
     st.success("Settings Saved ✅")
