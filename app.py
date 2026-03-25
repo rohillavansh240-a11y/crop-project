@@ -5,61 +5,76 @@ import sqlite3
 from datetime import datetime
 import os
 
-# ---------------- 1. CONFIG ----------------
-st.set_page_config(page_title="AgriDash | Vansh Rohilla", page_icon="🌾", layout="wide")
+# ---------------- 1. CONFIG & STYLING ----------------
+st.set_page_config(page_title="AgriDash | Smart Farming", page_icon="🌾", layout="wide")
 
-# Dark Theme Card Style
 st.markdown("""
     <style>
+    .main { background-color: #f8fafc; }
     .metric-card {
         padding: 20px;
         border-radius: 15px;
-        background: #1e293b;
+        background: linear-gradient(135deg, #1e293b, #334155);
         color: white;
         text-align: center;
-        border: 1px solid #334155;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     }
+    .stButton>button { width: 100%; border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
-# ---------------- 2. DATABASE ENGINE ----------------
+# ---------------- 2. FIXED DATABASE ENGINE ----------------
 DB_FILE = "agri_data.db"
 
 def get_connection():
-    return sqlite3.connect(DB_FILE, check_same_thread=False)
+    # check_same_thread=False is important for Streamlit
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    return conn
 
 def init_db():
     conn = get_connection()
-    c = conn.cursor()
-    # Hum 'price' aur 'volume' column use kar rahe hain dashboard charts ke liye
-    c.execute('''CREATE TABLE IF NOT EXISTS crops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT, category TEXT, price REAL, 
-                volume REAL, region TEXT, year INTEGER)''')
-    
-    c.execute("SELECT COUNT(*) FROM crops")
-    if c.fetchone()[0] == 0:
-        data = [('Wheat', 'Grain', 2200, 110, 'North', 2023),
-                ('Rice', 'Grain', 2100, 130, 'East', 2023),
-                ('Cotton', 'Fiber', 6000, 60, 'West', 2023)]
-        c.executemany("INSERT INTO crops (name, category, price, volume, region, year) VALUES (?,?,?,?,?,?)", data)
-    conn.commit()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS crops (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT, category TEXT, price REAL, 
+                    volume REAL, region TEXT, year INTEGER)''')
+        
+        # Check if empty to insert seed data
+        c.execute("SELECT COUNT(*) FROM crops")
+        if c.fetchone()[0] == 0:
+            data = [('Wheat', 'Grain', 2200, 110, 'North', 2023),
+                    ('Rice', 'Grain', 2100, 130, 'East', 2023),
+                    ('Cotton', 'Fiber', 6000, 60, 'West', 2023)]
+            c.executemany("INSERT INTO crops (name, category, price, volume, region, year) VALUES (?,?,?,?,?,?)", data)
+        conn.commit()
+    except Exception as e:
+        st.error(f"Database Error: {e}")
+    finally:
+        conn.close()
 
+# Run initialization once
 init_db()
 
-# ---------------- 3. SIDEBAR & FILTERS ----------------
+def get_data():
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM crops", conn)
+    conn.close()
+    return df
+
+# ---------------- 3. SIDEBAR NAVIGATION & FILTERS ----------------
 with st.sidebar:
     st.title("🌾 AgriDash")
+    st.write("---")
+    
     menu = st.radio("Main Menu", ["📊 Dashboard", "🌱 Crop Management", "📈 Analytics", "⚙️ Settings"])
     
-    st.divider()
-    conn = get_connection()
-    raw_df = pd.read_sql_query("SELECT * FROM crops", conn)
-    conn.close()
-
+    st.write("---")
+    st.subheader("🔍 Global Filters")
+    
+    raw_df = get_data()
+    # Handle empty case
     if not raw_df.empty:
-        st.subheader("🔍 Filters")
         f_region = st.selectbox("Region", ["All"] + sorted(list(raw_df["region"].unique())))
         f_cat = st.selectbox("Category", ["All"] + sorted(list(raw_df["category"].unique())))
         
@@ -71,71 +86,122 @@ with st.sidebar:
 
 # ---------------- 4. PAGES ----------------
 
+# --- DASHBOARD PAGE ---
 if menu == "📊 Dashboard":
     st.title("📊 Strategic Overview")
     
     if filtered_df.empty:
-        st.info("No data available. Please add data in Management.")
+        st.info("No data available. Add crops in Management tab.")
     else:
-        # Metrics
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(f"<div class='metric-card'><h3>{len(filtered_df)}</h3><p>Total Varieties</p></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='metric-card'><h3>₹ {filtered_df['price'].mean():,.2f}</h3><p>Avg Price</p></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='metric-card'><h3>{filtered_df['volume'].sum()}</h3><p>Total Vol (Lakh MT)</p></div>", unsafe_allow_html=True)
+        total_crops = len(filtered_df)
+        avg_price = filtered_df["price"].mean()
+        total_vol = filtered_df["volume"].sum()
 
-        st.divider()
-        # Charts
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"<div class='metric-card'><h3>{total_crops}</h3><p>Total Varieties</p></div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"<div class='metric-card'><h3>₹ {avg_price:,.2f}</h3><p>Average Market Price</p></div>", unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"<div class='metric-card'><h3>{total_vol} Lakh MT</h3><p>Total Production</p></div>", unsafe_allow_html=True)
+
+        st.write("---")
         v1, v2 = st.columns(2)
         with v1:
-            st.plotly_chart(px.bar(filtered_df, x="name", y="volume", color="category", title="Production"), use_container_width=True)
+            fig1 = px.bar(filtered_df, x="name", y="volume", color="name", title="Production by Variety", template="plotly_white")
+            st.plotly_chart(fig1, use_container_width=True)
         with v2:
-            st.plotly_chart(px.pie(filtered_df, names="category", values="volume", hole=0.4, title="Category Share"), use_container_width=True)
+            fig2 = px.pie(filtered_df, values="volume", names="category", hole=0.4, title="Category Distribution")
+            st.plotly_chart(fig2, use_container_width=True)
 
+# --- CROP MANAGEMENT PAGE ---
 elif menu == "🌱 Crop Management":
-    st.title("🌱 Crop Management")
-    t1, t2 = st.tabs(["Add New", "Edit/Delete"])
+    st.title("🌱 Crop Administration")
+    tab1, tab2 = st.tabs(["📋 View & Add", "✏️ Edit & Delete"])
     
-    with t1:
-        with st.form("add_crop"):
-            name = st.text_input("Crop Name")
-            cat = st.selectbox("Category", ["Grain", "Fiber", "Vegetable", "Fruit", "Other"])
-            col_a, col_b = st.columns(2)
-            prc = col_a.number_input("Price", min_value=0.0)
-            vlm = col_b.number_input("Volume", min_value=0.0)
-            reg = st.text_input("Region")
-            yr = st.number_input("Year", value=2026)
-            if st.form_submit_button("Save Record"):
-                conn = get_connection()
-                conn.execute("INSERT INTO crops (name, category, price, volume, region, year) VALUES (?,?,?,?,?,?)", (name, cat, prc, vlm, reg, yr))
-                conn.commit()
-                conn.close()
-                st.success("Data Saved!")
-                st.rerun()
-        
+    with tab1:
+        with st.expander("➕ Add New Crop Entry", expanded=False):
+            with st.form("add_form"):
+                ac1, ac2 = st.columns(2)
+                name = ac1.text_input("Crop Name")
+                cat = ac1.selectbox("Category", ["Grain", "Fiber", "Vegetable", "Fruit", "Other"])
+                prc = ac2.number_input("Price", min_value=0.0)
+                vlm = ac2.number_input("Volume", min_value=0.0)
+                reg = st.text_input("Region")
+                yr = st.number_input("Year", value=2024)
+                
+                if st.form_submit_button("Submit Record"):
+                    if name and reg:
+                        conn = get_connection()
+                        conn.execute("INSERT INTO crops (name, category, price, volume, region, year) VALUES (?,?,?,?,?,?)", 
+                                     (name, cat, prc, vlm, reg, yr))
+                        conn.commit()
+                        conn.close()
+                        st.success("Added!")
+                        st.rerun()
+
+        st.subheader("Active Inventory")
         st.dataframe(filtered_df, use_container_width=True, hide_index=True)
 
-    with t2:
-        if not raw_df.empty:
-            target = st.selectbox("Select Record", [f"{r['id']} | {r['name']}" for _, r in raw_df.iterrows()])
-            tid = int(target.split(" | ")[0])
+    with tab2:
+        if raw_df.empty:
+            st.info("No records to edit.")
+        else:
+            options = {f"{r['id']} - {r['name']}": r['id'] for _, r in raw_df.iterrows()}
+            select_id = st.selectbox("Select Crop", options.keys())
+            curr_id = options[select_id]
+            row = raw_df[raw_df["id"] == curr_id].iloc[0]
+            
+            with st.form("edit_form"):
+                ec1, ec2 = st.columns(2)
+                enat = ec1.text_input("Edit Name", row["name"])
+                ecat = ec1.selectbox("Edit Category", ["Grain", "Fiber", "Vegetable", "Fruit", "Other"])
+                eprc = ec2.number_input("Edit Price", value=float(row["price"]))
+                evol = ec2.number_input("Edit Volume", value=float(row["volume"]))
+                
+                if st.form_submit_button("Update Changes"):
+                    conn = get_connection()
+                    conn.execute("UPDATE crops SET name=?, category=?, price=?, volume=? WHERE id=?", 
+                                 (enat, ecat, eprc, evol, curr_id))
+                    conn.commit()
+                    conn.close()
+                    st.success("Updated!")
+                    st.rerun()
+            
             if st.button("🗑️ Delete Permanently"):
                 conn = get_connection()
-                conn.execute("DELETE FROM crops WHERE id=?", (tid,))
+                conn.execute("DELETE FROM crops WHERE id=?", (curr_id,))
                 conn.commit()
                 conn.close()
-                st.warning("Deleted!")
+                st.warning("Deleted.")
                 st.rerun()
 
+# --- ANALYTICS PAGE ---
 elif menu == "📈 Analytics":
-    st.title("📈 Market Trends")
+    st.title("📈 Advanced Analytics")
     if not filtered_df.empty:
-        st.plotly_chart(px.scatter(filtered_df, x="price", y="volume", size="volume", color="category", hover_name="name"), use_container_width=True)
+        fig_scat = px.scatter(filtered_df, x="price", y="volume", size="volume", color="category", 
+                              hover_name="name", template="plotly_dark")
+        st.plotly_chart(fig_scat, use_container_width=True)
+    else:
+        st.info("Add data to see analytics.")
 
+# --- SETTINGS PAGE ---
 elif menu == "⚙️ Settings":
-    st.title("⚙️ Control Panel")
-    st.subheader("Database Maintenance")
-    if st.button("🔴 RESET DATABASE (Fix Column Error)", type="primary"):
+    st.title("⚙️ System Settings")
+    colA, colB = st.columns(2)
+    with colA:
+        st.subheader("👤 Profile")
+        st.text_input("Name", "Vansh Rohilla")
+        st.button("Update Profile")
+    with colB:
+        st.subheader("📤 Backup")
+        csv = raw_df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV", data=csv, file_name="agri_backup.csv")
+    
+    st.divider()
+    if st.button("🔴 RESET DATABASE"):
         if os.path.exists(DB_FILE):
             os.remove(DB_FILE)
-            st.success("Database deleted! Table structure updated. Refreshing...")
+            st.success("Database wiped. Refreshing...")
             st.rerun()
