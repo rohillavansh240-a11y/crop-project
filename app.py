@@ -1,11 +1,9 @@
-import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# ---------------- CONFIG ----------------
-st.set_page_config(page_title="AgriDash Pro", layout="wide")
+st.set_page_config(layout="wide")
 
 # ---------------- CSS ----------------
 st.markdown("""
@@ -17,7 +15,6 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid #eee;
 }
 
-/* Banner */
 .banner {
     background: linear-gradient(135deg, #1b5e20, #2e7d32);
     padding: 30px;
@@ -25,7 +22,6 @@ section[data-testid="stSidebar"] {
     color: white;
 }
 
-/* Cards */
 .card {
     background: white;
     padding: 20px;
@@ -33,11 +29,10 @@ section[data-testid="stSidebar"] {
     box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 }
 
-/* Table */
-.table-card {
+.topbar {
     background: white;
     padding: 10px;
-    border-radius: 15px;
+    border-radius: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -45,7 +40,12 @@ section[data-testid="stSidebar"] {
 # ---------------- SIDEBAR ----------------
 st.sidebar.markdown("## 🌾 AgriDash")
 
-menu = st.sidebar.radio("", ["Dashboard","Crop Management","Analytics"])
+menu = st.sidebar.radio("", [
+    "Dashboard",
+    "Crop Management",
+    "Analytics",
+    "Settings"
+])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("👤 Vansh Rohilla")
@@ -74,7 +74,7 @@ with col1:
 
 with col2:
     now = datetime.now()
-    st.markdown(f"**Spring Season {now.year}**")
+    st.markdown(f'<div class="topbar"><b>Spring Season {now.year}</b></div>', unsafe_allow_html=True)
 
 if search:
     df = df[df["name"].str.contains(search, case=False)]
@@ -91,7 +91,6 @@ if menu == "Dashboard":
 
     st.write("")
 
-    # KPI
     c1,c2,c3,c4 = st.columns(4)
 
     c1.markdown(f'<div class="card"><h4>Total Crops</h4><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
@@ -101,7 +100,6 @@ if menu == "Dashboard":
 
     st.write("")
 
-    # Charts
     col1,col2 = st.columns(2)
 
     with col1:
@@ -116,15 +114,12 @@ if menu == "Dashboard":
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    st.write("")
-
-    # Line Chart
     st.markdown('<div class="card">', unsafe_allow_html=True)
     fig = px.line(df, x="year", y="price", color="name", markers=True, title="Price Trend")
     st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------- CROPS ----------------
+# ---------------- CROP MANAGEMENT ----------------
 elif menu == "Crop Management":
 
     st.title("🌱 Crop Database")
@@ -132,34 +127,81 @@ elif menu == "Crop Management":
     with st.expander("➕ Add New Crop"):
         name = st.text_input("Crop Name")
         price = st.number_input("Price")
-        prod = st.number_input("Production")
-        if st.button("Save"):
+        production = st.number_input("Production")
+
+        if st.button("Save Crop"):
             new_row = pd.DataFrame([{
                 "name": name,
                 "price": price,
-                "production": prod,
+                "production": production,
                 "year": datetime.now().year,
                 "category": "Custom",
                 "region": "India"
             }])
             df = pd.concat([df, new_row], ignore_index=True)
-            st.success("Added Successfully")
+            st.success("Crop Added ✅")
 
-    st.markdown('<div class="table-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.dataframe(df, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- ANALYTICS ----------------
 elif menu == "Analytics":
 
-    st.title("📈 Reports & Analytics")
+    st.title("📈 Advanced Analytics")
 
-    col1,col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
-    with col1:
-        fig = px.histogram(df, x="price", title="Price Distribution")
+    crop_filter = col1.multiselect("Crop", df["name"].unique(), default=df["name"].unique())
+    year_filter = col2.slider("Year", int(df["year"].min()), int(df["year"].max()),
+                             (int(df["year"].min()), int(df["year"].max())))
+    region_filter = col3.multiselect("Region", df["region"].unique(), default=df["region"].unique())
+
+    df_filtered = df[
+        (df["name"].isin(crop_filter)) &
+        (df["region"].isin(region_filter)) &
+        (df["year"].between(year_filter[0], year_filter[1]))
+    ]
+
+    tab1, tab2, tab3 = st.tabs(["📊 Trends", "📉 Distribution", "📦 Comparison"])
+
+    with tab1:
+        fig = px.line(df_filtered, x="year", y="price", color="name", markers=True)
         st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
-        fig = px.bar(df, x="region", y="production", title="Production by Region")
+    with tab2:
+        fig = px.histogram(df_filtered, x="price")
         st.plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+        fig = px.bar(df_filtered, x="name", y="production", color="name")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### 📌 Insights")
+
+    if not df_filtered.empty:
+        st.info(f"Highest Price: {df_filtered.loc[df_filtered['price'].idxmax()]['name']}")
+        st.info(f"Lowest Price: {df_filtered.loc[df_filtered['price'].idxmin()]['name']}")
+
+    fig = px.scatter(df_filtered, x="production", y="price", color="name")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.download_button("⬇ Download Data", df_filtered.to_csv(index=False), "data.csv")
+
+# ---------------- SETTINGS ----------------
+elif menu == "Settings":
+
+    st.title("⚙️ Settings")
+
+    st.markdown("### 🎨 UI Settings")
+    theme = st.selectbox("Theme", ["Light", "Dark"])
+    currency = st.selectbox("Currency", ["₹ INR", "$ USD", "€ EUR"])
+
+    st.markdown("### 📊 Chart Settings")
+    chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
+    show_data = st.checkbox("Show Raw Data", True)
+
+    st.markdown("### 🔔 Alerts")
+    alert = st.slider("Price Alert %", 1, 50, 10)
+
+    st.success("Settings Saved ✅")
