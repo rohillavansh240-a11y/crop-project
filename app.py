@@ -214,7 +214,7 @@ elif menu == "Analytics":
         st.download_button("⬇ Download Data", df_filtered.to_csv(index=False), "data.csv")
 
 # ---------------- SETTINGS ----------------
-elif menu == "Settings":
+elif
 
     st.title("⚙️ Settings")
 
