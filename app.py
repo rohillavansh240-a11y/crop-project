@@ -104,29 +104,128 @@ if menu == "Dashboard":
 
 # ---------------- MANAGEMENT ----------------
 elif menu == "Management":
-    st.title("🌱 Crop Management")
+    st.title("🌱 Smart Crop Management")
 
-    with st.form("add"):
-        name = st.text_input("Name")
-        cat = st.selectbox("Category", ["Grain", "Fiber", "Vegetable", "Fruit"])
-        price = st.number_input("Price", 0.0)
-        volume = st.number_input("Volume", 0.0)
+    df = get_data()
+
+    # ---------- SEARCH & FILTER ----------
+    st.subheader("🔍 Search & Filter")
+
+    col1, col2 = st.columns(2)
+    search = col1.text_input("Search Crop Name")
+    category_filter = col2.selectbox("Filter Category", ["All"] + list(df["category"].unique()))
+
+    filtered = df.copy()
+
+    if search:
+        filtered = filtered[filtered["name"].str.contains(search, case=False)]
+
+    if category_filter != "All":
+        filtered = filtered[filtered["category"] == category_filter]
+
+    st.divider()
+
+    # ---------- ADD NEW ----------
+    st.subheader("➕ Add Crop")
+
+    with st.form("add_crop"):
+        c1, c2 = st.columns(2)
+
+        name = c1.text_input("Crop Name")
+        category = c1.text_input("Category")
+        price = c2.number_input("Price", 0.0)
+        volume = c2.number_input("Volume", 0.0)
         region = st.text_input("Region")
         year = st.number_input("Year", 2024)
 
-        if st.form_submit_button("Add"):
-            if name and region:
+        if st.form_submit_button("Add Crop"):
+            if name and category and region:
                 conn = get_connection()
                 conn.execute("""
                     INSERT INTO crops (name, category, price, volume, region, year)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (name, cat, price, volume, region, year))
+                """, (name, category, price, volume, region, year))
                 conn.commit()
                 conn.close()
-                st.success("Added")
+                st.success("Crop Added")
+                st.rerun()
+            else:
+                st.error("Fill all fields")
+
+    st.divider()
+
+    # ---------- BULK UPLOAD ----------
+    st.subheader("📥 Bulk Upload CSV")
+
+    file = st.file_uploader("Upload CSV", type=["csv"])
+
+    if file:
+        new_df = pd.read_csv(file)
+
+        required_cols = {"name", "category", "price", "volume", "region", "year"}
+        if required_cols.issubset(set(new_df.columns)):
+            conn = get_connection()
+            new_df.to_sql("crops", conn, if_exists="append", index=False)
+            conn.close()
+            st.success("Bulk Upload Successful")
+            st.rerun()
+        else:
+            st.error("CSV must contain: name, category, price, volume, region, year")
+
+    st.divider()
+
+    # ---------- DATA TABLE ----------
+    st.subheader("📋 Data Editor")
+
+    if not filtered.empty:
+        # Add calculated column
+        filtered["profit"] = filtered["price"] * filtered["volume"]
+
+        edited_df = st.data_editor(
+            filtered,
+            use_container_width=True,
+            num_rows="dynamic"
+        )
+
+        # ---------- SAVE EDIT ----------
+        if st.button("💾 Save Changes"):
+            conn = get_connection()
+
+            for _, row in edited_df.iterrows():
+                conn.execute("""
+                    UPDATE crops
+                    SET name=?, category=?, price=?, volume=?, region=?, year=?
+                    WHERE id=?
+                """, (row["name"], row["category"], row["price"],
+                      row["volume"], row["region"], row["year"], row["id"]))
+
+            conn.commit()
+            conn.close()
+            st.success("Changes Saved")
+            st.rerun()
+
+        # ---------- BULK DELETE ----------
+        st.subheader("🗑 Bulk Delete")
+
+        delete_ids = st.multiselect("Select IDs to delete", edited_df["id"])
+
+        if st.button("Delete Selected"):
+            if delete_ids:
+                conn = get_connection()
+                conn.executemany("DELETE FROM crops WHERE id=?", [(i,) for i in delete_ids])
+                conn.commit()
+                conn.close()
+                st.warning("Deleted Selected Records")
                 st.rerun()
 
-    st.dataframe(filtered_df)
+        # ---------- EXPORT ----------
+        st.subheader("📤 Export Data")
+
+        csv = edited_df.to_csv(index=False).encode()
+        st.download_button("Download Filtered Data", csv, "filtered_data.csv")
+
+    else:
+        st.warning("No data found")
 
 # ---------------- ANALYTICS ----------------
 elif menu == "Analytics":
