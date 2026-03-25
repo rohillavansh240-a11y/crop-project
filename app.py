@@ -4,132 +4,122 @@ import plotly.express as px
 from sklearn.linear_model import LinearRegression
 import numpy as np
 
-# ---------------- CONFIG ----------------
-st.set_page_config(page_title="AgriVision Pro", layout="wide")
-
-# ---------------- THEME SETTINGS ----------------
-st.sidebar.title("⚙️ Dashboard Settings")
-
-theme = st.sidebar.selectbox("Theme", ["Dark", "Light"])
-show_prediction = st.sidebar.toggle("Enable Prediction", True)
-show_table = st.sidebar.toggle("Show Data Table", True)
-edit_data = st.sidebar.toggle("Enable Data Editing", False)
-chart_type = st.sidebar.selectbox("Chart Type", ["Line", "Bar"])
-
-# ---------------- THEME CSS ----------------
-if theme == "Dark":
-    st.markdown("""
-    <style>
-    body { background-color: #0e1117; color: white; }
-    .card {
-        background-color: #1c1f26;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0px 0px 10px rgba(0,255,200,0.2);
-    }
-    </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-    body { background-color: #ffffff; color: black; }
-    .card {
-        background-color: #f5f5f5;
-        padding: 20px;
-        border-radius: 15px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# ---------------- TITLE ----------------
-st.title("🌾 AgriVision Pro Dashboard")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="🌾 Crop Dashboard", layout="wide")
 
 # ---------------- LOAD DATA ----------------
 @st.cache_data
 def load_data():
     return pd.read_csv("crop_data.csv")
 
-df = load_data()
+data = load_data()
 
-# ---------------- FILTERS ----------------
-st.sidebar.subheader("📊 Filters")
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("⚙️ Dashboard Settings")
 
-crop = st.sidebar.multiselect("Select Crop", df["Crop"].unique(), default=df["Crop"].unique())
+theme = st.sidebar.radio("🎨 Theme", ["Dark", "Light"])
+chart_type = st.sidebar.selectbox("📊 Chart Type", ["Line", "Bar"])
+enable_prediction = st.sidebar.toggle("🤖 Enable Prediction", True)
+show_table = st.sidebar.toggle("📋 Show Data Table", True)
+enable_edit = st.sidebar.toggle("✏️ Enable Data Editing", False)
 
-year_range = st.sidebar.slider(
-    "Year Range",
-    int(df["Year"].min()),
-    int(df["Year"].max()),
-    (2018, 2022)
+selected_crops = st.sidebar.multiselect(
+    "🌱 Select Crops",
+    options=data["Crop"].unique(),
+    default=list(data["Crop"].unique())[:2]
 )
 
-# Filter Data
-filtered = df[
-    (df["Crop"].isin(crop)) &
-    (df["Year"] >= year_range[0]) &
-    (df["Year"] <= year_range[1])
+year_range = st.sidebar.slider(
+    "📅 Year Range",
+    int(data["Year"].min()),
+    int(data["Year"].max()),
+    (int(data["Year"].min()), int(data["Year"].max()))
+)
+
+# ---------------- THEME ----------------
+if theme == "Dark":
+    st.markdown("""
+        <style>
+        .main { background-color: #0e1117; color: white; }
+        </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+        <style>
+        .main { background-color: white; color: black; }
+        </style>
+    """, unsafe_allow_html=True)
+
+# ---------------- TITLE ----------------
+st.title("🌾 Crop Price & Production Dashboard")
+
+# ---------------- FILTER DATA ----------------
+filtered_data = data[
+    (data["Crop"].isin(selected_crops)) &
+    (data["Year"].between(year_range[0], year_range[1]))
 ]
 
 # ---------------- METRICS ----------------
 col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.metric("📦 Production", int(filtered["Production"].sum()))
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.metric("💰 Avg Price", f"₹{int(filtered['Price'].mean())}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col3:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.metric("📅 Years", filtered["Year"].nunique())
-    st.markdown('</div>', unsafe_allow_html=True)
+col1.metric("🌱 Crops Selected", len(selected_crops))
+col2.metric("📅 Years", f"{year_range[0]} - {year_range[1]}")
+col3.metric("📊 Records", len(filtered_data))
 
 # ---------------- CHART ----------------
-st.subheader("📈 Trend Analysis")
+st.subheader("📊 Price Trend")
 
 if chart_type == "Line":
-    fig = px.line(filtered, x="Year", y="Price", color="Crop", markers=True)
+    fig = px.line(filtered_data, x="Year", y="Price", color="Crop", markers=True)
 else:
-    fig = px.bar(filtered, x="Year", y="Price", color="Crop")
+    fig = px.bar(filtered_data, x="Year", y="Price", color="Crop")
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ---------------- PRODUCTION CHART ----------------
-st.subheader("🌱 Production")
-
-fig2 = px.area(filtered, x="Year", y="Production", color="Crop")
-st.plotly_chart(fig2, use_container_width=True)
-
 # ---------------- PREDICTION ----------------
-if show_prediction:
-    st.subheader("🔮 Price Prediction")
+if enable_prediction:
+    st.subheader("🤖 Price Prediction (Next Year)")
 
-    if len(filtered) > 1:
-        X = filtered["Year"].values.reshape(-1, 1)
-        y = filtered["Price"].values
+    predictions = []
 
-        model = LinearRegression()
-        model.fit(X, y)
+    for crop in selected_crops:
+        crop_data = filtered_data[filtered_data["Crop"] == crop]
 
-        future_year = st.number_input("Future Year", 2023, 2035, 2025)
+        if len(crop_data) > 1:
+            X = crop_data["Year"].values.reshape(-1, 1)
+            y = crop_data["Price"].values
 
-        pred = model.predict([[future_year]])[0]
+            model = LinearRegression()
+            model.fit(X, y)
 
-        st.success(f"Predicted Price: ₹{int(pred)}")
+            future_year = year_range[1] + 1
+            pred = model.predict([[future_year]])[0]
 
-# ---------------- DATA TABLE ----------------
+            predictions.append([crop, future_year, round(pred, 2)])
+
+    if predictions:
+        pred_df = pd.DataFrame(predictions, columns=["Crop", "Year", "Predicted Price"])
+        st.dataframe(pred_df)
+    else:
+        st.warning("Not enough data for prediction")
+
+# ---------------- TABLE ----------------
 if show_table:
     st.subheader("📋 Data Table")
 
-    if edit_data:
-        edited_df = st.data_editor(filtered)
+    if enable_edit:
+        edited_data = st.data_editor(filtered_data, use_container_width=True)
     else:
-        st.dataframe(filtered)
+        st.dataframe(filtered_data, use_container_width=True)
 
 # ---------------- DOWNLOAD ----------------
-csv = filtered.to_csv(index=False).encode("utf-8")
-st.download_button("⬇️ Download CSV", csv, "data.csv", "text/csv")
+st.subheader("⬇️ Download Data")
+
+csv = filtered_data.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    label="Download CSV",
+    data=csv,
+    file_name="filtered_crop_data.csv",
+    mime="text/csv"
+)
