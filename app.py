@@ -1,227 +1,105 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
+# Page Configuration - Browser tab name and layout
+st.set_page_config(page_title="Crop Price & Production Dashboard", layout="wide")
 
-# ---------------- CSS ----------------
+# --- CUSTOM CSS (For that Dark Glassy UI Look) ---
 st.markdown("""
-<style>
-.main {
-    background: linear-gradient(to right, #f8fafc, #eef2f7);
-}
-
-section[data-testid="stSidebar"] {
-    background: #ffffff;
-    border-right: 1px solid #eee;
-}
-
-.banner {
-    background: linear-gradient(135deg, #1b5e20, #43a047);
-    padding: 35px;
-    border-radius: 20px;
-    color: white;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-}
-
-.card {
-    background: rgba(255,255,255,0.7);
-    backdrop-filter: blur(10px);
-    padding: 20px;
-    border-radius: 18px;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.08);
-    transition: 0.3s;
-}
-
-.card:hover {
-    transform: translateY(-5px);
-}
-
-.topbar {
-    background: white;
-    padding: 10px;
-    border-radius: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------- SESSION ----------------
-if "menu" not in st.session_state:
-    st.session_state.menu = "Dashboard"
-
-# ---------------- SIDEBAR ----------------
-st.sidebar.markdown("## 🌾 AgriDash")
-
-menu = st.sidebar.radio(
-    "",
-    ["Dashboard", "Crop Management", "Analytics", "Settings"],
-    index=["Dashboard", "Crop Management", "Analytics", "Settings"].index(st.session_state.menu)
-)
-
-st.session_state.menu = menu
-
-# ---------------- SIDEBAR PROFILE ----------------
-st.sidebar.markdown("---")
-
-st.sidebar.markdown("""
-<div style="background:#f5efe6;padding:15px;border-radius:15px;">
-    <div style="display:flex;align-items:center;">
-        <div style="background:#cdeac0;border-radius:50%;width:40px;height:40px;
-        display:flex;align-items:center;justify-content:center;font-weight:bold;margin-right:10px;">
-        VR
-        </div>
-        <div>
-            <b>Vansh Rohilla</b><br>
-            <small>Farm Manager</small>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-if st.sidebar.button("⚙️ Settings"):
-    st.session_state.menu = "Settings"
-
-# ---------------- DATA ----------------
-@st.cache_data
-def load_data():
-    data = {
-        "name": ["Wheat","Rice","Sugarcane","Maize","Potato"],
-        "year": [2021,2022,2023,2024,2024],
-        "price": [2000,3000,1800,2500,1200],
-        "production": [1000,1500,500,800,600],
-        "category": ["Grain","Grain","Sugar","Grain","Vegetable"],
-        "region": ["India","India","India","India","India"]
+    <style>
+    .main { background-color: #0e1117; }
+    [data-testid="stMetricValue"] { font-size: 28px; color: #00d4ff; }
+    [data-testid="stSidebar"] { background-color: #161b22; }
+    div.stButton > button { background-color: #00d4ff; color: white; border-radius: 5px; }
+    .metric-card {
+        background-color: #161b22;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #30363d;
     }
-    return pd.DataFrame(data)
-
-df = load_data()
-
-# ---------------- TOP BAR ----------------
-col1, col2 = st.columns([3,1])
-
-with col1:
-    search = st.text_input("🔍 Search crops, regions...")
-
-with col2:
-    now = datetime.now()
-    st.markdown(f'<div class="topbar"><b>Spring Season {now.year}</b></div>', unsafe_allow_html=True)
-
-if search:
-    df = df[df["name"].str.contains(search, case=False)]
-
-# ---------------- DASHBOARD ----------------
-if menu == "Dashboard":
-
-    st.markdown("""
-    <div class="banner">
-        <h1>Agricultural Overview</h1>
-        <p>Smart crop analytics dashboard</p>
-    </div>
+    </style>
     """, unsafe_allow_html=True)
 
-    st.write("")
+# --- MOCK DATA (Crop Price & Production) ---
+data = {
+    'Month': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'],
+    'Price': [450, 480, 520, 510, 550, 600, 590, 620, 650, 700],
+    'Production': [1200, 1150, 1300, 1250, 1400, 1350, 1500, 1450, 1600, 1550],
+    'Region': ['North', 'East', 'South', 'West', 'North', 'East', 'South', 'West', 'North', 'East']
+}
+df = pd.DataFrame(data)
 
-    # Safe Top Crop
-    if not df.empty:
-        top_crop = df.loc[df["production"].idxmax(), "name"]
-    else:
-        top_crop = "N/A"
+# --- SIDEBAR NAV ---
+with st.sidebar:
+    st.image("https://www.python.org/static/community_logos/python-logo-master-v3-TM.png", width=50)
+    st.title("PYDASH")
+    st.markdown("---")
+    st.button("📊 Dashboard", use_container_width=True)
+    st.button("📁 Projects", use_container_width=True)
+    st.button("📑 Reports", use_container_width=True)
+    st.button("⚙️ Settings", use_container_width=True)
+    st.markdown("---")
+    st.write("User: **Admin K.**")
 
-    c1,c2,c3,c4 = st.columns(4)
+# --- MAIN UI ---
+st.header("Crop Production & Price Analytics")
+st.subheader("Global Performance Overview")
 
-    c1.markdown(f'<div class="card">🌾<br><b>Total Crops</b><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="card">💰<br><b>Avg Price</b><h2>₹{df["price"].mean():.0f}</h2></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="card">🏭<br><b>Total Production</b><h2>{df["production"].sum()}</h2></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="card">🏆<br><b>Top Crop</b><h2>{top_crop}</h2></div>', unsafe_allow_html=True)
+# Top Metrics Row
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Total Revenue", "$1.2M", "+8.4%")
+with col2:
+    st.metric("Avg Crop Price", "$580", "+5.2%")
+with col3:
+    st.metric("New Harvests", "1,340", "+12.1%")
+with col4:
+    st.metric("Market Demand", "94%", "-0.5%")
 
-    st.write("")
+st.markdown("---")
 
-    col1,col2 = st.columns([2,1])
+# Middle Row: Main Charts
+left_col, right_col = st.columns([2, 1])
 
-    with col1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.plotly_chart(px.line(df, x="year", y="price", color="name"), use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+with left_col:
+    st.write("### Monthly Price vs. Production")
+    fig = go.Figure()
+    # Line Chart for Price
+    fig.add_trace(go.Scatter(x=df['Month'], y=df['Price'], name='Price ($)', 
+                             line=dict(color='#00d4ff', width=4), mode='lines+markers'))
+    # Area Chart for Production
+    fig.add_trace(go.Scatter(x=df['Month'], y=df['Production'], name='Production (Tons)', 
+                             fill='tozeroy', line=dict(color='rgba(0, 212, 255, 0.2)')))
+    
+    fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', 
+                      plot_bgcolor='rgba(0,0,0,0)', height=400)
+    st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.plotly_chart(px.pie(df, names="category"), use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+with right_col:
+    st.write("### Top 5 Crops by Sales")
+    crops = ['Wheat', 'Rice', 'Corn', 'Soy', 'Cotton']
+    sales = [2500, 2100, 1800, 1500, 900]
+    fig_bar = px.bar(x=sales, y=crops, orientation='h', color_discrete_sequence=['#00d4ff'])
+    fig_bar.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', height=400)
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-    st.markdown("### 🧠 Insights")
+# Bottom Row
+bottom_left, bottom_right = st.columns(2)
 
-    if not df.empty:
-        st.success(f"🔥 Highest Price Crop: {df.loc[df['price'].idxmax(),'name']}")
-        st.warning(f"📉 Lowest Price Crop: {df.loc[df['price'].idxmin(),'name']}")
+with bottom_left:
+    st.write("### Distribution by Region")
+    fig_pie = px.pie(df, values='Production', names='Region', hole=0.6,
+                     color_discrete_sequence=px.colors.sequential.Cyan)
+    fig_pie.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-# ---------------- CROP MANAGEMENT ----------------
-elif menu == "Crop Management":
-
-    st.title("🌱 Crop Database")
-
-    with st.expander("➕ Add New Crop"):
-        name = st.text_input("Crop Name")
-        price = st.number_input("Price")
-        production = st.number_input("Production")
-
-        if st.button("Save Crop"):
-            new_row = pd.DataFrame([{
-                "name": name,
-                "price": price,
-                "production": production,
-                "year": datetime.now().year,
-                "category": "Custom",
-                "region": "India"
-            }])
-            df = pd.concat([df, new_row], ignore_index=True)
-            st.success("Crop Added ✅")
-
-    st.dataframe(df, use_container_width=True)
-
-# ---------------- ANALYTICS ----------------
-elif menu == "Analytics":
-
-    st.title("📈 Advanced Analytics")
-
-    if not df.empty:
-        min_year = int(df["year"].min())
-        max_year = int(df["year"].max())
-
-        col1,col2,col3 = st.columns(3)
-
-        crop_filter = col1.multiselect("Crop", df["name"].unique(), default=df["name"].unique())
-        year_filter = col2.slider("Year", min_year, max_year, (min_year, max_year))
-        region_filter = col3.multiselect("Region", df["region"].unique(), default=df["region"].unique())
-
-        df_filtered = df[
-            (df["name"].isin(crop_filter)) &
-            (df["region"].isin(region_filter)) &
-            (df["year"].between(year_filter[0], year_filter[1]))
-        ]
-
-        tab1, tab2, tab3 = st.tabs(["📊 Trends", "📉 Distribution", "📦 Comparison"])
-
-        with tab1:
-            st.plotly_chart(px.line(df_filtered, x="year", y="price", color="name"), use_container_width=True)
-
-        with tab2:
-            st.plotly_chart(px.histogram(df_filtered, x="price"), use_container_width=True)
-
-        with tab3:
-            st.plotly_chart(px.bar(df_filtered, x="name", y="production"), use_container_width=True)
-
-        st.download_button("⬇ Download Data", df_filtered.to_csv(index=False), "data.csv")
-
-# ---------------- SETTINGS ----------------
-elif
-
-    st.title("⚙️ Settings")
-
-    st.selectbox("Theme", ["Light", "Dark"])
-    st.selectbox("Currency", ["₹ INR", "$ USD"])
-
-    st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
-    st.slider("Price Alert %", 1, 50, 10)
-
-    st.success("Settings Saved ✅")
+with bottom_right:
+    st.write("### Recent Activity Log")
+    activity_data = {
+        "Time": ["2 mins ago", "10 mins ago", "1 hour ago", "4 hours ago"],
+        "Action": ["Price Updated", "New Export Order", "Stock Refilled", "Report Generated"],
+        "Status": ["✅ Done", "✅ Done", "⚠️ Pending", "✅ Done"]
+    }
+    st.table(pd.DataFrame(activity_data))
