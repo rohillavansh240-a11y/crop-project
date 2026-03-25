@@ -138,10 +138,94 @@ elif menu == "Analytics":
 
 # ---------------- SETTINGS ----------------
 elif menu == "Settings":
-    st.title("⚙️ Settings")
+    st.title("⚙️ Advanced Settings")
 
-    if st.button("RESET DATABASE"):
-        if os.path.exists(DB_FILE):
-            os.remove(DB_FILE)
-            st.success("Reset done")
-            st.rerun()
+    CONFIG_FILE = "config.json"
+
+    # ---------- LOAD CONFIG ----------
+    def load_config():
+        if os.path.exists(CONFIG_FILE):
+            return pd.read_json(CONFIG_FILE, typ="series").to_dict()
+        return {"theme": "Light", "name": "User"}
+
+    def save_config(data):
+        pd.Series(data).to_json(CONFIG_FILE)
+
+    config = load_config()
+
+    # ---------- PROFILE ----------
+    st.subheader("👤 Profile Settings")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        name = st.text_input("Your Name", config.get("name", "User"))
+    with col2:
+        theme = st.selectbox("Theme", ["Light", "Dark"],
+                             index=0 if config.get("theme") == "Light" else 1)
+
+    if st.button("💾 Save Profile"):
+        save_config({"name": name, "theme": theme})
+        st.success("Profile Saved")
+        st.rerun()
+
+    # ---------- THEME APPLY ----------
+    if config.get("theme") == "Dark":
+        st.markdown("""
+        <style>
+        .main { background-color: #0e1117; color: white; }
+        </style>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ---------- DATA EXPORT ----------
+    st.subheader("📤 Data Export")
+
+    if not raw_df.empty:
+        csv = raw_df.to_csv(index=False).encode()
+        json_data = raw_df.to_json().encode()
+
+        col1, col2 = st.columns(2)
+        col1.download_button("Download CSV", csv, "agri_data.csv")
+        col2.download_button("Download JSON", json_data, "agri_data.json")
+    else:
+        st.warning("No data to export")
+
+    st.divider()
+
+    # ---------- AUTO BACKUP ----------
+    st.subheader("💾 Backup System")
+
+    if st.button("Create Backup"):
+        backup_file = f"backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        raw_df.to_csv(backup_file, index=False)
+        st.success(f"Backup created: {backup_file}")
+
+    st.divider()
+
+    # ---------- APP STATS ----------
+    st.subheader("📊 App Statistics")
+
+    if not raw_df.empty:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Records", len(raw_df))
+        col2.metric("Avg Price", f"₹ {raw_df['price'].mean():.2f}")
+        col3.metric("Regions", raw_df['region'].nunique())
+    else:
+        st.info("No data available")
+
+    st.divider()
+
+    # ---------- DANGER ZONE ----------
+    st.subheader("🚨 Danger Zone")
+
+    confirm = st.checkbox("I understand this will delete ALL data")
+
+    if st.button("🔴 Reset Database"):
+        if confirm:
+            if os.path.exists(DB_FILE):
+                os.remove(DB_FILE)
+                st.success("Database Reset Successfully")
+                st.rerun()
+        else:
+            st.warning("Please confirm before resetting")
