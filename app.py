@@ -8,25 +8,34 @@ st.set_page_config(layout="wide")
 # ---------------- CSS ----------------
 st.markdown("""
 <style>
-.main { background-color: #f5f7f9; }
+.main {
+    background: linear-gradient(to right, #f8fafc, #eef2f7);
+}
 
 section[data-testid="stSidebar"] {
-    background-color: #ffffff;
+    background: #ffffff;
     border-right: 1px solid #eee;
 }
 
 .banner {
-    background: linear-gradient(135deg, #1b5e20, #2e7d32);
-    padding: 30px;
+    background: linear-gradient(135deg, #1b5e20, #43a047);
+    padding: 35px;
     border-radius: 20px;
     color: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
 .card {
-    background: white;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(10px);
     padding: 20px;
     border-radius: 18px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+    transition: 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
 }
 
 .topbar {
@@ -37,7 +46,7 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- SESSION MENU ----------------
+# ---------------- SESSION ----------------
 if "menu" not in st.session_state:
     st.session_state.menu = "Dashboard"
 
@@ -107,39 +116,44 @@ if menu == "Dashboard":
     st.markdown("""
     <div class="banner">
         <h1>Agricultural Overview</h1>
-        <p>Track crop performance, prices and production</p>
+        <p>Smart crop analytics dashboard</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.write("")
 
-    c1,c2,c3,c4 = st.columns(4)
-
     # Safe Top Crop
-    if not df.empty and "production" in df.columns:
+    if not df.empty:
         top_crop = df.loc[df["production"].idxmax(), "name"]
     else:
         top_crop = "N/A"
 
-    c1.markdown(f'<div class="card"><h4>Total Crops</h4><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="card"><h4>Avg Price</h4><h2>₹{df["price"].mean():.0f}</h2></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="card"><h4>Total Production</h4><h2>{df["production"].sum()}</h2></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="card"><h4>Top Crop</h4><h2>{top_crop}</h2></div>', unsafe_allow_html=True)
+    c1,c2,c3,c4 = st.columns(4)
+
+    c1.markdown(f'<div class="card">🌾<br><b>Total Crops</b><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="card">💰<br><b>Avg Price</b><h2>₹{df["price"].mean():.0f}</h2></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="card">🏭<br><b>Total Production</b><h2>{df["production"].sum()}</h2></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="card">🏆<br><b>Top Crop</b><h2>{top_crop}</h2></div>', unsafe_allow_html=True)
 
     st.write("")
 
-    col1,col2 = st.columns(2)
+    col1,col2 = st.columns([2,1])
 
     with col1:
-        fig = px.bar(df, x="name", y="production")
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.plotly_chart(px.line(df, x="year", y="price", color="name"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        fig = px.pie(df, names="category")
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.plotly_chart(px.pie(df, names="category"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    fig = px.line(df, x="year", y="price", color="name", markers=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("### 🧠 Insights")
+
+    if not df.empty:
+        st.success(f"🔥 Highest Price Crop: {df.loc[df['price'].idxmax(),'name']}")
+        st.warning(f"📉 Lowest Price Crop: {df.loc[df['price'].idxmin(),'name']}")
 
 # ---------------- CROP MANAGEMENT ----------------
 elif menu == "Crop Management":
@@ -174,7 +188,7 @@ elif menu == "Analytics":
         min_year = int(df["year"].min())
         max_year = int(df["year"].max())
 
-        col1, col2, col3 = st.columns(3)
+        col1,col2,col3 = st.columns(3)
 
         crop_filter = col1.multiselect("Crop", df["name"].unique(), default=df["name"].unique())
         year_filter = col2.slider("Year", min_year, max_year, (min_year, max_year))
@@ -204,10 +218,10 @@ elif menu == "Settings":
 
     st.title("⚙️ Settings")
 
-    theme = st.selectbox("Theme", ["Light", "Dark"])
-    currency = st.selectbox("Currency", ["₹ INR", "$ USD"])
+    st.selectbox("Theme", ["Light", "Dark"])
+    st.selectbox("Currency", ["₹ INR", "$ USD"])
 
-    chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
-    alert = st.slider("Price Alert %", 1, 50, 10)
+    st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
+    st.slider("Price Alert %", 1, 50, 10)
 
     st.success("Settings Saved ✅")
